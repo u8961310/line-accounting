@@ -125,12 +125,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     source: tx.source,
   }));
 
-  // Totals
-  const totalIncome = transactions
+  // Totals — current month only
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  const thisMonthTxs = transactions.filter(
+    (tx) => tx.date.toISOString().slice(0, 7) === currentMonth,
+  );
+
+  const totalIncome = thisMonthTxs
     .filter((tx) => tx.type === "收入")
     .reduce((sum, tx) => sum + parseFloat(tx.amount.toString()), 0);
 
-  const totalExpense = transactions
+  const totalExpense = thisMonthTxs
     .filter((tx) => tx.type === "支出")
     .reduce((sum, tx) => sum + parseFloat(tx.amount.toString()), 0);
 
