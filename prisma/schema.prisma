@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  lineUserId   String        @unique
+  displayName  String
+  createdAt    DateTime      @default(now())
+  transactions Transaction[]
+  bankBalances BankBalance[]
+  loans        Loan[]
+  creditCards  CreditCard[]
+}
+
+model BankBalance {
+  id        String   @id @default(cuid())
+  userId    String
+  source    String
+  balance   Decimal  @db.Decimal(12, 2)
+  asOfDate  DateTime
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, source])
+}
+
+model Transaction {
+  id           String   @id @default(cuid())
+  userId       String
+  date         DateTime
+  amount       Decimal  @db.Decimal(12, 2)
+  category     String
+  type         String   // 收入 | 支出
+  note         String   @default("")
+  source       String   // line | tbank | cathay_bank | esun_bank | ctbc_bank | cathay_cc | esun_cc | ctbc_cc | taishin_cc
+  notionPageId String?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date, amount, source])
+  @@index([userId])
+  @@index([date])
+}
+
+model Loan {
+  id                 String        @id @default(cuid())
+  userId             String
+  name               String
+  lender             String
+  type               String        // 個人信貸 / 房貸 / 車貸 / 分期 / 民間
+  originalPrincipal  Decimal       @db.Decimal(12, 2)
+  remainingPrincipal Decimal       @db.Decimal(12, 2)
+  interestRate       Decimal       @db.Decimal(8, 4)  // annual %, e.g. 9.88
+  paymentDay         Int?          // day of month 1-31
+  endDate            DateTime?
+  status             String        @default("active")  // active / paid_off
+  note               String        @default("")
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments LoanPayment[]
+}
+
+model LoanPayment {
+  id                 String   @id @default(cuid())
+  loanId             String
+  paymentDate        DateTime
+  principalPaid      Decimal  @db.Decimal(12, 2)
+  interestPaid       Decimal  @db.Decimal(12, 2)
+  totalPaid          Decimal  @db.Decimal(12, 2)
+  remainingPrincipal Decimal  @db.Decimal(12, 2)
+  note               String   @default("")
+  createdAt          DateTime @default(now())
+
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+}
+
+model CreditCard {
+  id             String           @id @default(cuid())
+  userId         String
+  name           String
+  bank           String
+  creditLimit    Decimal?         @db.Decimal(12, 2)
+  statementDay   Int?
+  dueDay         Int?
+  currentBalance Decimal          @default(0) @db.Decimal(12, 2)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bills CreditCardBill[]
+}
+
+model CreditCardBill {
+  id             String    @id @default(cuid())
+  creditCardId   String
+  billingMonth   String    // "2026-03"
+  totalAmount    Decimal   @db.Decimal(12, 2)
+  minimumPayment Decimal?  @db.Decimal(12, 2)
+  dueDate        DateTime
+  paidAmount     Decimal   @default(0) @db.Decimal(12, 2)
+  paidDate       DateTime?
+  status         String    @default("unpaid")  // unpaid / paid / partial
+  createdAt      DateTime  @default(now())
+
+  creditCard CreditCard @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+}
