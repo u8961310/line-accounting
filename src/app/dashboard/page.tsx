@@ -30,13 +30,14 @@ type TabId = "charts" | "transactions" | "loans" | "import" | "guide";
 const CHART_COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EF4444", "#06B6D4", "#F97316", "#6366F1"];
 
 const SOURCE_LABELS: Record<string, string> = {
-  line: "LINE", manual: "手動", cash: "現金", tbank: "台灣銀行", cathay_bank: "國泰世華", esun_bank: "玉山銀行",
-  ctbc_bank: "中信銀行", mega_bank: "兆豐銀行", cathay_cc: "國泰信用卡",
+  line: "LINE", manual: "手動", cash: "現金",
+  esun_bank: "玉山銀行", ctbc_bank: "中國信託", mega_bank: "兆豐銀行",
+  yuanta_bank: "元大銀行", sinopac_bank: "永豐銀行", kgi_bank: "凱基銀行", cathay_cc: "國泰信用卡",
   esun_cc: "玉山信用卡", ctbc_cc: "中信信用卡", taishin_cc: "台新信用卡",
   sinopac_cc: "永豐信用卡", unknown: "其他",
 };
 const CC_SOURCES   = new Set(["cathay_cc", "esun_cc", "ctbc_cc", "taishin_cc", "sinopac_cc"]);
-const BANK_SOURCES = new Set(["tbank", "cathay_bank", "esun_bank", "ctbc_bank", "mega_bank"]);
+const BANK_SOURCES = new Set(["esun_bank", "ctbc_bank", "mega_bank", "yuanta_bank", "sinopac_bank", "kgi_bank"]);
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "charts",       label: "圖表分析" },
@@ -131,6 +132,8 @@ export default function DashboardPage() {
   const [categories,   setCategories]   = useState<string[]>([]);
   const [theme,        setTheme]        = useState<AppTheme>(THEMES[1]); // slate default
   const [addModal,     setAddModal]     = useState(false);
+  const [notionSyncing, setNotionSyncing] = useState(false);
+  const [notionMsg,     setNotionMsg]     = useState<string | null>(null);
   const [addForm,      setAddForm]      = useState({ date: new Date().toISOString().split("T")[0], type: "收入", amount: "", category: "", note: "" });
   const [addSaving,    setAddSaving]    = useState(false);
   const TX_LIMIT = 30;
@@ -186,6 +189,16 @@ export default function DashboardPage() {
   useEffect(() => {
     if (activeTab === "transactions") fetchTxPage(txPage);
   }, [activeTab, txPage, fetchTxPage]);
+
+  async function handleNotionSync() {
+    setNotionSyncing(true); setNotionMsg(null);
+    try {
+      const res = await fetch("/api/notion-sync", { method: "POST" });
+      const json = await res.json() as { message: string };
+      setNotionMsg(json.message);
+    } catch { setNotionMsg("同步失敗"); }
+    finally { setNotionSyncing(false); }
+  }
 
   async function saveManualTx() {
     const amount = parseFloat(addForm.amount);
@@ -288,6 +301,11 @@ export default function DashboardPage() {
               <option value={6}>近 6 個月</option>
               <option value={12}>近 12 個月</option>
             </select>
+            <button onClick={handleNotionSync} disabled={notionSyncing}
+              className="text-[13px] font-semibold px-4 py-2 rounded-xl disabled:opacity-40 transition-colors"
+              style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-sub)" }}>
+              {notionSyncing ? "同步中…" : "同步 Notion"}
+            </button>
             <button onClick={handleRecategorize} disabled={recatLoading}
               className="text-[13px] font-semibold px-4 py-2 rounded-xl disabled:opacity-40 transition-colors"
               style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--accent-light)" }}>
@@ -323,6 +341,12 @@ export default function DashboardPage() {
           <div className="rounded-2xl px-5 py-3 flex items-center justify-between" style={{ background: "#0D2010", border: "1px solid #166534" }}>
             <p className="text-[13px] font-medium text-emerald-400">{recatMsg}</p>
             <button onClick={() => setRecatMsg(null)} className="text-emerald-600 text-lg">×</button>
+          </div>
+        )}
+        {notionMsg && (
+          <div className="rounded-2xl px-5 py-3 flex items-center justify-between" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+            <p className="text-[13px] font-medium" style={{ color: "var(--text-primary)" }}>Notion：{notionMsg}</p>
+            <button onClick={() => setNotionMsg(null)} className="text-lg" style={{ color: "var(--text-muted)" }}>×</button>
           </div>
         )}
 
@@ -771,16 +795,15 @@ export default function DashboardPage() {
                 title: "CSV 匯入銀行對帳單",
                 color: "#3B82F6",
                 items: [
-                  { label: "台灣銀行", example: "CSV（Big5 編碼）" },
-                  { label: "國泰世華存款", example: "CSV" },
-                  { label: "玉山銀行存款", example: "CSV" },
+                  { label: "玉山銀行存款", example: "CSV / XLS" },
                   { label: "中國信託存款", example: "CSV（Big5 編碼）" },
-                  { label: "國泰世華信用卡", example: "CSV" },
-                  { label: "玉山信用卡", example: "XLS" },
-                  { label: "中信信用卡", example: "CSV（Big5 編碼）" },
-                  { label: "台新信用卡", example: "CSV" },
+                  { label: "兆豐銀行存款", example: "CSV" },
+                  { label: "元大銀行存款", example: "CSV" },
+                  { label: "永豐銀行存款", example: "CSV" },
+                  { label: "凱基銀行存款", example: "CSV（AI 解析）" },
+                  { label: "永豐信用卡", example: "PDF（AI 解析）" },
                 ],
-                note: "至「匯入資料」頁面，選擇銀行或自動偵測，上傳檔案即可。系統自動去除重複紀錄。",
+                note: "至「匯入資料」頁面，選擇銀行或自動偵測，上傳檔案即可。系統自動去除重複紀錄。凱基存款、永豐信用卡由 AI 自動解析格式。",
               },
               {
                 icon: "✏️",

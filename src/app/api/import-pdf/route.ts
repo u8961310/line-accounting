@@ -89,8 +89,6 @@ export async function POST(req: NextRequest) {
               source: tx.source,
             },
           });
-          const { syncTransactionToNotion } = await import("@/lib/notion");
-          syncTransactionToNotion(created);
           imported++;
         }
 

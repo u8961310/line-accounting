@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifySignature, replyMessage, getUserProfile } from "@/lib/line";
 import { parseExpenseText } from "@/lib/parser";
 import { prisma } from "@/lib/db";
-import { syncTransactionToNotion } from "@/lib/notion";
 
 interface LineEvent {
   type: string;
@@ -89,8 +88,6 @@ async function handleTextMessage(
 
   await replyMessage(replyToken, replyText);
 
-  // Background Notion sync (never await)
-  syncTransactionToNotion(transaction);
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {

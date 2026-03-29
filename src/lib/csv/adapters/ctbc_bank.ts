@@ -93,7 +93,7 @@ export const ctbcBankAdapter: CsvAdapter = {
       const balanceStr = row["餘額"] ?? "";
       const dateStr = row["交易日期"] ?? row["日期"] ?? "";
       const amount = parseAmount(balanceStr);
-      if (amount > 0 && dateStr.trim()) {
+      if (!isNaN(amount) && dateStr.trim()) {
         return { amount, date: rocYearToDate(dateStr) };
       }
     }

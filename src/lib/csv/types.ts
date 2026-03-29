@@ -1,13 +1,10 @@
 export type BankSource =
-  | "tbank"
-  | "cathay_bank"
   | "esun_bank"
   | "ctbc_bank"
   | "mega_bank"
-  | "cathay_cc"
-  | "esun_cc"
-  | "ctbc_cc"
-  | "taishin_cc"
+  | "yuanta_bank"
+  | "sinopac_bank"
+  | "kgi_bank"
   | "sinopac_cc"
   | "unknown";
 

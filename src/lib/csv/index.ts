@@ -2,39 +2,28 @@ import Papa from "papaparse";
 import { detectAndConvertToUtf8 } from "./encoding";
 import { detectSource } from "./detector";
 import { ParsedTransaction, BankSource, CsvAdapter } from "./types";
-import { tbankAdapter } from "./adapters/tbank";
-import { cathayBankAdapter } from "./adapters/cathay_bank";
 import { esunBankAdapter } from "./adapters/esun_bank";
 import { ctbcBankAdapter } from "./adapters/ctbc_bank";
 import { megaBankAdapter } from "./adapters/mega_bank";
-import { cathayCcAdapter } from "./adapters/cathay_cc";
-import { esunCcAdapter } from "./adapters/esun_cc";
-import { ctbcCcAdapter } from "./adapters/ctbc_cc";
-import { taishinCcAdapter } from "./adapters/taishin_cc";
+import { yuantaBankAdapter } from "./adapters/yuanta_bank";
+import { sinopacBankAdapter } from "./adapters/sinopac_bank";
 import { createAiFallbackAdapter, parseWithAiFallback } from "./adapters/ai_fallback";
 import { parseXls } from "./xls";
 import { batchCategorize } from "./categorizer";
 import { prisma } from "../db";
 
-const ADAPTERS: Record<Exclude<BankSource, "unknown" | "sinopac_cc">, CsvAdapter> = {
-  tbank: tbankAdapter,
-  cathay_bank: cathayBankAdapter,
-  esun_bank: esunBankAdapter,
-  ctbc_bank: ctbcBankAdapter,
-  mega_bank: megaBankAdapter,
-  cathay_cc: cathayCcAdapter,
-  esun_cc: esunCcAdapter,
-  ctbc_cc: ctbcCcAdapter,
-  taishin_cc: taishinCcAdapter,
+const ADAPTERS: Record<Exclude<BankSource, "unknown" | "sinopac_cc" | "kgi_bank">, CsvAdapter> = {
+  esun_bank:    esunBankAdapter,
+  ctbc_bank:    ctbcBankAdapter,
+  mega_bank:    megaBankAdapter,
+  yuanta_bank:  yuantaBankAdapter,
+  sinopac_bank: sinopacBankAdapter,
 };
 
 function getAdapter(source: BankSource): CsvAdapter {
-  if (source === "unknown") {
-    return createAiFallbackAdapter("unknown");
-  }
-  if (source === "sinopac_cc") {
-    return createAiFallbackAdapter("sinopac_cc");
-  }
+  if (source === "kgi_bank")   return createAiFallbackAdapter("kgi_bank");
+  if (source === "sinopac_cc") return createAiFallbackAdapter("sinopac_cc");
+  if (source === "unknown")    return createAiFallbackAdapter("unknown");
   return ADAPTERS[source];
 }
 
@@ -85,9 +74,6 @@ async function saveTransactions(
             source: tx.source,
           },
         });
-
-        const { syncTransactionToNotion } = await import("../notion");
-        syncTransactionToNotion(created);
 
         result.imported++;
       }
@@ -147,7 +133,12 @@ async function parseAndSave(
   }
 
   if (transactions.length === 0) {
-    result.errors.push("無法從檔案解析出任何交易記錄");
+    // Diagnostic: surface enough info to debug without needing server logs
+    const firstRowKeys = rows.length > 0 ? Object.keys(rows[0]).join(", ") : "(no rows)";
+    const firstRowSample = rows.length > 0 ? JSON.stringify(rows[0]).slice(0, 120) : "";
+    console.error("[csv] 0 transactions. source:", source, "rows:", rows.length, "headers:", headers.join("|"));
+    console.error("[csv] first row:", firstRowSample);
+    result.errors.push(`無法從檔案解析出任何交易記錄（偵測來源：${source}，資料行數：${rows.length}，欄位：${firstRowKeys}）`);
     return result;
   }
 
@@ -158,13 +149,30 @@ async function parseAndSave(
   return result;
 }
 
+/**
+ * 永豐銀行存款 CSV 前幾行為 metadata（帳號/查詢日期），
+ * 找到 "交易日" 開頭的那行作為真正的 header，丟棄之前的行。
+ */
+function stripSinopacMetaRows(text: string): string {
+  const lines = text.split(/\r?\n/);
+  console.log("[strip] line0:", JSON.stringify(lines[0]?.slice(0, 30)));
+  if (!lines[0]?.trimStart().startsWith("帳號")) return text;
+  const idx = lines.findIndex((l) => l.trimStart().startsWith("交易日"));
+  console.log("[strip] headerRowIdx:", idx);
+  if (idx < 0) return text;
+  const stripped = lines.slice(idx).join("\n");
+  console.log("[strip] first stripped line:", JSON.stringify(stripped.split("\n")[0]));
+  return stripped;
+}
+
 export async function parseCsv(buffer: Buffer, userId: string): Promise<CsvImportResult> {
-  const utf8Content = detectAndConvertToUtf8(buffer);
+  const raw = detectAndConvertToUtf8(buffer);
+  const utf8Content = stripSinopacMetaRows(raw);
 
   const parseResult = Papa.parse<Record<string, string>>(utf8Content, {
     header: true,
     skipEmptyLines: true,
-    trimHeaders: true,
+    transformHeader: (h: string) => h.trim(),
   });
 
   const result = await parseAndSave(

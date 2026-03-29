@@ -3,15 +3,13 @@
 import { useState, useRef, useEffect } from "react";
 
 type BankSource =
-  | "tbank"
-  | "cathay_bank"
   | "esun_bank"
   | "ctbc_bank"
   | "mega_bank"
-  | "cathay_cc"
-  | "esun_cc"
-  | "ctbc_cc"
-  | "taishin_cc"
+  | "yuanta_bank"
+  | "sinopac_bank"
+  | "kgi_bank"
+  | "sinopac_cc"
   | "auto";
 
 interface BankOption {
@@ -21,29 +19,24 @@ interface BankOption {
 }
 
 const BANK_OPTIONS: BankOption[] = [
-  { value: "auto",       label: "自動偵測",           tag: "自動" },
-  { value: "tbank",      label: "台灣銀行",            tag: "存款" },
-  { value: "cathay_bank",label: "國泰世華銀行",        tag: "存款" },
-  { value: "esun_bank",  label: "玉山銀行",            tag: "存款" },
-  { value: "ctbc_bank",  label: "中國信託",            tag: "存款" },
-  { value: "mega_bank",  label: "兆豐銀行",            tag: "存款" },
-  { value: "cathay_cc",  label: "國泰世華",            tag: "信用卡" },
-  { value: "esun_cc",    label: "玉山銀行",            tag: "信用卡" },
-  { value: "ctbc_cc",    label: "中信",                tag: "信用卡" },
-  { value: "taishin_cc", label: "台新",                tag: "信用卡" },
+  { value: "auto",         label: "自動偵測",   tag: "自動" },
+  { value: "esun_bank",    label: "玉山銀行",   tag: "存款" },
+  { value: "ctbc_bank",    label: "中國信託",   tag: "存款" },
+  { value: "mega_bank",    label: "兆豐銀行",   tag: "存款" },
+  { value: "yuanta_bank",  label: "元大銀行",   tag: "存款" },
+  { value: "sinopac_bank", label: "永豐銀行",   tag: "存款" },
+  { value: "kgi_bank",     label: "凱基銀行",   tag: "存款" },
+  { value: "sinopac_cc",   label: "永豐",       tag: "信用卡" },
 ];
 
 const FORMAT_LIST = [
-  { bank: "台灣銀行",     type: "存款",  fmt: "CSV (Big5)" },
-  { bank: "國泰世華",     type: "存款",  fmt: "CSV" },
-  { bank: "玉山銀行",     type: "存款",  fmt: "CSV" },
-  { bank: "中國信託",     type: "存款",  fmt: "CSV (Big5)" },
-  { bank: "兆豐銀行",     type: "存款",  fmt: "CSV" },
-  { bank: "國泰世華",     type: "信用卡",fmt: "CSV" },
-  { bank: "玉山銀行",     type: "信用卡",fmt: "XLS" },
-  { bank: "中信",         type: "信用卡",fmt: "CSV (Big5)" },
-  { bank: "台新",         type: "信用卡",fmt: "CSV" },
-  { bank: "永豐",         type: "信用卡",fmt: "PDF" },
+  { bank: "玉山銀行",   type: "存款",  fmt: "CSV / XLS" },
+  { bank: "中國信託",   type: "存款",  fmt: "CSV (Big5)" },
+  { bank: "兆豐銀行",   type: "存款",  fmt: "CSV" },
+  { bank: "元大銀行",   type: "存款",  fmt: "CSV" },
+  { bank: "永豐銀行",   type: "存款",  fmt: "CSV" },
+  { bank: "凱基銀行",   type: "存款",  fmt: "AI 解析" },
+  { bank: "永豐",       type: "信用卡",fmt: "PDF" },
 ];
 
 interface ImportResult {

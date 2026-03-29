@@ -95,7 +95,7 @@ export const megaBankAdapter: CsvAdapter = {
       const balanceStr = row["帳戶餘額"] ?? "";
       const dateStr = row["交易時間"] ?? "";
       const amount = parseAmount(balanceStr);
-      if (amount > 0 && dateStr.trim()) {
+      if (!isNaN(amount) && dateStr.trim()) {
         return { amount, date: parseDate(dateStr) };
       }
     }

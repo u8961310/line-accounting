@@ -67,7 +67,7 @@ export const cathayBankAdapter: CsvAdapter = {
       const balanceStr = row["帳戶餘額"] ?? "";
       const dateStr = row["交易日期"] ?? "";
       const amount = parseAmount(balanceStr);
-      if (amount > 0 && dateStr.trim()) {
+      if (!isNaN(amount) && dateStr.trim()) {
         return { amount, date: parseDate(dateStr) };
       }
     }
