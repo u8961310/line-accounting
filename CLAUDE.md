@@ -414,7 +414,7 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 ### 改造 TODO（🟡 中 — 保留功能但降低複雜度）
 
 - [x] **財務健康評分快照**：移除手動「📌 記錄」按鈕，改為每次載入圖表 Tab 時自動 upsert 當月快照（趨勢圖保留）；移除 `/api/health-score/snapshots` 的手動呼叫邏輯（與淨資產快照合併為同一 useEffect 自動 upsert）
-- [ ] **使用說明 Tab**：把「使用說明」從 Tools 下拉移除，改為 Header 右側的 `?` 按鈕展開 Modal，減少 Tab 數量
+- ~~**使用說明 Tab**：把「使用說明」從 Tools 下拉移除，改為 Header 右側的 `?` 按鈕展開 Modal，減少 Tab 數量~~ → 保留現狀，待 UI 大改時再評估
 - [x] **淨資產快照手動記錄**：與健康評分快照相同，移除「記錄快照」按鈕，改為自動 upsert（目前兩套快照邏輯重複）
 
 ### 保留（個人化頁面，確認繼續使用）
