@@ -237,7 +237,7 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 | `get_net_worth` | 淨資產 |
 | `get_loans` | 貸款明細 |
 | `get_income_breakdown` | 收入來源分析 |
-| `get_payees` / `add_payee` / `update_payee` / `delete_payee` | 帳號對照 CRUD |
+| ~~`get_payees` / `add_payee` / `update_payee` / `delete_payee`~~ | ~~帳號對照 CRUD~~（已移除） |
 | `get_weekly_report` | 週報 |
 | `get_spending_trend` | 跨月分類比較 |
 | `get_loan_summary` | 貸款總覽 |
@@ -342,7 +342,7 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - ~~搜尋歷史記錄：快速搜尋 Bar 顯示最近 5 筆紀錄（localStorage），點一下套用~~ → 不需要
 - [x] 淺色主題：確認「☀️ 淺藍」「☀️ 白底」為淺色主題，「🌙 深色」為深色主題；優化命名加 ☀️/🌙 標示，並強化淺色主題卡片陰影與邊框細節
 - [ ] 月曆 hover popup 邊界修正：行末格子（週六/週日欄）的明細 popup 可能超出右側畫面，需偵測位置動態往左展開
-- [ ] 圖表 Tab 卡片懶載入：卡片數量多時初次進入較慢，考慮依 cardOrder/visibility 分批渲染或 IntersectionObserver 觸發載入
+- [ ] 圖表 Tab 卡片懶載入：卡片數量多時初次進入較慢，考慮依 cardOrder/visibility 分批渲染
 
 ### 頁面 UX 優化（🟡 中）
 
@@ -408,8 +408,8 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 
 ### 移除 TODO（🔴 高 — 低風險，移除乾淨）
 
-- [ ] **疑似轉帳配對**：移除 `/api/transfer-candidates`、dashboard 的 `transferPairs` state + fetch + UI section（line ~3401）；轉帳辨識改由匯入時直接標分類處理
-- [ ] **帳號對照（PayeeMapping）**：移除 `payees` Tab、`PayeeManager` 元件、`/api/payees/` + `/api/payees/[id]/`；執行 `prisma migrate dev` 刪除 `PayeeMapping` 資料表
+- [x] **疑似轉帳配對**：移除 `/api/transfer-candidates`、dashboard 的 `transferPairs` state + fetch + UI section（line ~3401）；轉帳辨識改由匯入時直接標分類處理
+- [x] **帳號對照（PayeeMapping）**：移除 `payees` Tab、`PayeeManager` 元件、`/api/payees/` + `/api/payees/[id]/`；執行 `prisma migrate dev` 刪除 `PayeeMapping` 資料表（待執行 DB migration）
 
 ### 改造 TODO（🟡 中 — 保留功能但降低複雜度）
 

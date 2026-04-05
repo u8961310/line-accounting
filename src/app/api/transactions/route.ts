@@ -95,9 +95,9 @@ export async function GET(request: NextRequest) {
       // 設定欄寬
       ws["!cols"] = [{ wch: 12 }, { wch: 6 }, { wch: 10 }, { wch: 10 }, { wch: 30 }, { wch: 14 }, { wch: 8 }];
       XLSX.utils.book_append_sheet(wb, ws, "交易記錄");
-      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+      const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as number[];
       const filename = `transactions-${new Date().toISOString().split("T")[0]}.xlsx`;
-      return new NextResponse(buf, {
+      return new NextResponse(new Uint8Array(buf), {
         headers: {
           "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           "Content-Disposition": `attachment; filename="${filename}"`,

@@ -95,12 +95,12 @@ export default function DuplicateReview() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      setDismissed(prev => new Set([...prev, pk]));
+      setDismissed(prev => new Set(Array.from(prev).concat(pk)));
     } catch (e) { console.error(e); }
     setDeleting(null);
   };
 
-  const dismiss = (pk: string) => setDismissed(prev => new Set([...prev, pk]));
+  const dismiss = (pk: string) => setDismissed(prev => new Set(Array.from(prev).concat(pk)));
 
   const visible = pairs.filter(p => !dismissed.has(pairKey(p)));
 

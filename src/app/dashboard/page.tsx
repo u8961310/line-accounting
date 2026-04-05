@@ -566,7 +566,7 @@ export default function DashboardPage() {
     setHiddenCards(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
-      localStorage.setItem(CHART_VIS_KEY, JSON.stringify([...next]));
+      localStorage.setItem(CHART_VIS_KEY, JSON.stringify(Array.from(next)));
       return next;
     });
   };
@@ -2544,7 +2544,7 @@ export default function DashboardPage() {
               // Top 3 分類變化
               const curCats  = new Map(data.totals && data.byCategory.filter(c => c.type === "支出").map(c => [c.category, c.total]));
               const prevCats = new Map(prevMonthSummary.byCategory.filter(c => c.type === "支出").map(c => [c.category, c.total]));
-              const allCats  = Array.from(new Set([...curCats.keys(), ...prevCats.keys()]));
+              const allCats  = Array.from(new Set([...Array.from(curCats.keys()), ...Array.from(prevCats.keys())]));
               const catDiffs = allCats.map(cat => ({ cat, diff: (curCats.get(cat) ?? 0) - (prevCats.get(cat) ?? 0) }))
                 .filter(x => Math.abs(x.diff) > 50)
                 .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).slice(0, 3);
