@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Budget" ADD COLUMN "carryoverPct" INTEGER NOT NULL DEFAULT 0;

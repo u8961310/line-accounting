@@ -1241,3 +1241,162 @@ export function MilestoneTimeline({ isDemo }: { isDemo: boolean }) {
     </Card>
   );
 }
+
+// ── PersonalityReport ──────────────────────────────────────────────────────
+
+interface PersonalityReport {
+  generatedAt:     string;
+  totalExpense:    number;
+  topCategories:   { category: string; amount: number; pct: number }[];
+  dowStats:        { dow: string; amount: number; pct: number }[];
+  impulseRatio:    number;
+  essentialRatio:  number;
+  highRiskCats:    string[];
+  advice:          string[];
+  summary:         string;
+}
+
+export function PersonalityReport({ isDemo }: { isDemo: boolean }) {
+  const [report,  setReport]  = useState<PersonalityReport | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
+
+  function generate() {
+    if (isDemo) { setError("Demo 模式不支援 AI 報告"); return; }
+    setLoading(true);
+    setError(null);
+    fetch("/api/ai-personality-report")
+      .then(async r => {
+        const d = await r.json() as PersonalityReport & { error?: string };
+        if (d.error) { setError(d.error); return; }
+        setReport(d);
+      })
+      .catch(() => setError("生成失敗，請稍後再試"))
+      .finally(() => setLoading(false));
+  }
+
+  const maxDow = report ? Math.max(...report.dowStats.map(d => d.amount)) : 1;
+
+  return (
+    <Card>
+      <div className="space-y-5">
+        <h3 className="font-semibold text-[15px]" style={{ color: "#8B5CF6" }}>🧠 消費性格 AI 報告</h3>
+
+        {!report && (
+          <div className="text-center py-10 space-y-3">
+            <p className="text-4xl">🧠</p>
+            <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
+              分析近 3 個月交易，生成個人化消費性格報告
+            </p>
+            <button onClick={generate} disabled={loading}
+              className="px-6 py-2.5 rounded-xl text-[14px] font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
+              style={{ background: "#8B5CF6", color: "#fff" }}>
+              {loading ? "AI 分析中…" : "生成報告"}
+            </button>
+            {error && <p className="text-[13px]" style={{ color: "#EF4444" }}>{error}</p>}
+          </div>
+        )}
+
+        {report && (
+          <>
+            {/* Summary card */}
+            <div className="rounded-2xl p-4" style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.3)" }}>
+              <p className="text-[12px] font-bold uppercase tracking-wider mb-2" style={{ color: "#8B5CF6" }}>消費性格摘要</p>
+              <p className="text-[14px] leading-relaxed" style={{ color: "var(--text-primary)" }}>{report.summary}</p>
+            </div>
+
+            {/* Ratio stats */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "衝動消費", value: `${report.impulseRatio}%`, color: "#F87171", icon: "🛒" },
+                { label: "必要支出", value: `${report.essentialRatio}%`, color: "#34D399", icon: "🏠" },
+                { label: "3 月總支出", value: `NT$ ${fmt(report.totalExpense)}`, color: "#60A5FA", icon: "💸" },
+              ].map(s => (
+                <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
+                  <p className="text-[18px] mb-0.5">{s.icon}</p>
+                  <p className="text-[18px] font-black tabular-nums" style={{ color: s.color }}>{s.value}</p>
+                  <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Top categories bar */}
+            <div>
+              <p className="text-[12px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>分類佔比</p>
+              <div className="space-y-2">
+                {report.topCategories.slice(0, 6).map((c, i) => {
+                  const colors = ["#60A5FA","#C084FC","#34D399","#FB923C","#F472B6","#FBBF24"];
+                  const color  = colors[i % colors.length];
+                  return (
+                    <div key={c.category}>
+                      <div className="flex justify-between text-[12px] mb-1">
+                        <span style={{ color: "var(--text-sub)" }}>{c.category}</span>
+                        <span className="tabular-nums" style={{ color: "var(--text-muted)" }}>NT$ {fmt(c.amount)} ({c.pct}%)</span>
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--bg-input)" }}>
+                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${c.pct}%`, background: color }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Day-of-week spending */}
+            <div>
+              <p className="text-[12px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>星期消費分佈</p>
+              <div className="flex items-end gap-1.5 h-20">
+                {report.dowStats.map(d => {
+                  const h = maxDow > 0 ? Math.round((d.amount / maxDow) * 100) : 0;
+                  const isMax = d.amount === maxDow;
+                  return (
+                    <div key={d.dow} className="flex-1 flex flex-col items-center gap-1">
+                      <div className="w-full rounded-t-md transition-all duration-500"
+                        style={{ height: `${h}%`, background: isMax ? "#8B5CF6" : "rgba(139,92,246,0.3)", minHeight: 3 }} />
+                      <span className="text-[10px]" style={{ color: isMax ? "#8B5CF6" : "var(--text-muted)" }}>{d.dow.replace("週","")}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* High risk */}
+            {report.highRiskCats.length > 0 && (
+              <div className="rounded-xl px-4 py-3" style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                <p className="text-[12px] font-bold mb-1" style={{ color: "#EF4444" }}>⚠️ 高風險分類</p>
+                <p className="text-[13px]" style={{ color: "var(--text-sub)" }}>{report.highRiskCats.join("、")}</p>
+              </div>
+            )}
+
+            {/* AI advice */}
+            {report.advice.length > 0 && (
+              <div className="space-y-2.5">
+                <p className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>AI 行為建議</p>
+                {report.advice.map((a, i) => (
+                  <div key={i} className="rounded-xl px-4 py-3 flex gap-3"
+                    style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
+                    <span className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-black mt-0.5"
+                      style={{ background: "#8B5CF6", color: "#fff" }}>{i + 1}</span>
+                    <p className="text-[13px] leading-relaxed" style={{ color: "var(--text-sub)" }}>{a}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Footer: re-generate + generated time */}
+            <div className="flex items-center justify-between">
+              <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                生成於 {new Date(report.generatedAt).toLocaleString("zh-TW")}
+              </p>
+              <button onClick={generate} disabled={loading}
+                className="px-3 py-1 rounded-lg text-[12px] font-semibold transition-opacity hover:opacity-80"
+                style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>
+                {loading ? "分析中…" : "重新生成"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}

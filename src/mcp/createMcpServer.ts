@@ -1,13 +1,4 @@
-﻿#!/usr/bin/env node
-/**
- * LINE 記帳系統 MCP Server
- * 讓 Claude Code 可以直接查詢記帳資料
- *
- * 啟動：npx tsx src/mcp/server.ts
- */
-
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -1653,15 +1644,3 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
   return server;
 }
-
-// ── stdio 模式用的 singleton ──────────────────────────────────────────────────
-const server = createMcpServer();
-
-// ── 啟動（stdio 模式）────────────────────────────────────────────────────────
-async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("LINE 記帳 MCP Server 啟動中...");
-}
-
-main().catch(console.error);

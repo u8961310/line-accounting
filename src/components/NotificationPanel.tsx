@@ -21,9 +21,10 @@ function saveReadIds(ids: Set<string>) {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 const TYPE_LABEL: Record<AppNotification["type"], string> = {
-  budget: "預算",
-  bill:   "帳單",
-  goal:   "目標",
+  budget:       "預算",
+  bill:         "帳單",
+  goal:         "目標",
+  subscription: "訂閱",
 };
 
 const SEVERITY_COLOR: Record<AppNotification["severity"], string> = {
