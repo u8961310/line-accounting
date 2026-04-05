@@ -129,16 +129,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   );
 
   // 寫入稽核記錄
-  const categorySummary = validUpdates.reduce<Record<string, number>>((acc, u) => {
+  const categoryBreakdown = validUpdates.reduce<Record<string, number>>((acc, u) => {
     acc[u.category] = (acc[u.category] ?? 0) + 1;
     return acc;
   }, {});
+  const breakdownStr = Object.entries(categoryBreakdown)
+    .map(([cat, n]) => `${cat}×${n}`)
+    .join("、");
 
   void logAudit({
     action:  "ai_recategorize",
     tool:    "clean-other-category",
-    params:  { count: validUpdates.length },
-    summary: { applied: validUpdates.length, byCategory: categorySummary },
+    summary: {
+      "套用筆數": validUpdates.length,
+      "分類明細": breakdownStr || "—",
+    },
   });
 
   return NextResponse.json({ applied: validUpdates.length });

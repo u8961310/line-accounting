@@ -244,8 +244,12 @@ export async function POST(req: NextRequest) {
     void logAudit({
       action:  "notion_sync",
       tool:    "ai-insight",
-      params:  { month: body.month },
-      summary: { pageUrl: pageUrl ?? "", income: Math.round(d.totalIncome), expense: Math.round(d.totalExpense) },
+      summary: {
+        "月份":   body.month,
+        "收入":   `NT$${Math.round(d.totalIncome).toLocaleString()}`,
+        "支出":   `NT$${Math.round(d.totalExpense).toLocaleString()}`,
+        "頁面":   pageUrl ?? "—",
+      },
     });
 
     return NextResponse.json({ success: true, url: pageUrl });
