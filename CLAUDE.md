@@ -242,6 +242,17 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 | `get_notifications` | 所有警示（預算/帳單/貸款/目標），危急優先排序 |
 | `get_annual_report` | 年度財報摘要（月趨勢 + 分類排行 + 最高/最低月份） |
 
+### 待新增
+| 工具 | 功能 | 優先 |
+|------|------|------|
+| `add_transaction` | 新增交易（讓 Claude Code 直接記帳，不用開 LINE） | 🔴 |
+| `update_transaction` | 修改交易分類/備註/金額 | 🔴 |
+| `delete_transaction` | 刪除指定交易 | 🔴 |
+| `add_budget` / `update_budget` | 設定或調整預算 | 🟡 |
+| `add_loan_payment` | 記錄還款 | 🟡 |
+| `get_subscriptions` | 完整訂閱明細（現有 `get_subscription_summary` 只有摘要） | 🟡 |
+| `get_anomaly_detection` | 異常支出偵測（`/api/anomaly-detection` 已有，補 MCP 包裝） | 🟡 |
+
 ---
 
 ## TODO
@@ -362,6 +373,15 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 
 ### 通知與推播
 > 已移至 kogao 專案（`d:\code\kogao\CLAUDE.md`）管理
+
+### MCP 工具擴充（🔴 高）
+- [ ] `add_transaction`：在 `createMcpServer.ts` 新增寫入工具，讓 Claude Code 直接說「記帳早餐 80」，呼叫 `POST /api/transactions`
+- [ ] `update_transaction`：修改指定交易的分類/備註/金額，呼叫 `PATCH /api/transactions/:id`
+- [ ] `delete_transaction`：刪除指定交易，呼叫 `DELETE /api/transactions/:id`
+- [ ] `add_budget` / `update_budget`：設定或調整預算分類金額（🟡）
+- [ ] `add_loan_payment`：記錄還款，呼叫 `POST /api/loans/:id/payments`（🟡）
+- [ ] `get_subscriptions`：回傳完整訂閱明細列表（現有工具只有摘要）（🟡）
+- [ ] `get_anomaly_detection`：包裝現有 `/api/anomaly-detection` 端點（🟡）
 
 ### AI 洞察（🔴 高）
 - [x] AI 月度洞察報告：每月底用 Claude API 分析當月交易，自動生成個人化建議（支出異常、預算執行、目標進度、研究所儲蓄缺口），結果顯示在 Dashboard 並可 LINE 推播
