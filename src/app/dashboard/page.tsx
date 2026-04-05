@@ -599,6 +599,7 @@ export default function DashboardPage() {
   const [monthDetailLoading, setMonthDetailLoading] = useState(false);
   const [prevMonthCats,      setPrevMonthCats]      = useState<CategorySummary[]>([]);
   const [moodTrend,          setMoodTrend]          = useState<{ month: string; label: string; 衝動: number; 計畫: number; 必要: number; taggedPct: number }[]>([]);
+  const [moodChartView,      setMoodChartView]      = useState<"bar" | "pie">("bar");
   const [merchantTxs,        setMerchantTxs]        = useState<{ note: string; amount: number; category: string }[]>([]);
   const [merchantView,       setMerchantView]       = useState<"count" | "amount">("count");
   const [yoyData,            setYoyData]            = useState<{ cur: { byCategory: CategorySummary[]; totals: { income: number; expense: number; net: number } }; prev: { byCategory: CategorySummary[]; totals: { income: number; expense: number; net: number } }; curMonth: string; prevMonth: string } | null>(null);
@@ -3806,40 +3807,111 @@ export default function DashboardPage() {
                 );
               })()}
 
-              {/* ── 消費性質趨勢 ── */}
+              {/* ── 支出心情分佈圖 ── */}
               {moodTrend.length > 0 && moodTrend.some(m => m.衝動 + m.計畫 + m.必要 > 0) && (() => {
                 const avgTaggedPct = Math.round(moodTrend.reduce((s, m) => s + m.taggedPct, 0) / moodTrend.length);
                 const totalImpulse = moodTrend.reduce((s, m) => s + m.衝動, 0);
-                const totalTagged  = moodTrend.reduce((s, m) => s + m.衝動 + m.計畫 + m.必要, 0);
+                const totalPlanned = moodTrend.reduce((s, m) => s + m.計畫, 0);
+                const totalNeeded  = moodTrend.reduce((s, m) => s + m.必要, 0);
+                const totalTagged  = totalImpulse + totalPlanned + totalNeeded;
                 const impulsePct   = totalTagged > 0 ? Math.round((totalImpulse / totalTagged) * 100) : 0;
+                const MOOD_COLORS  = { 必要: "#10B981", 計畫: "#6366F1", 衝動: "#EF4444" };
+                const pieData = [
+                  { name: "必要", value: totalNeeded,  color: MOOD_COLORS.必要 },
+                  { name: "計畫", value: totalPlanned, color: MOOD_COLORS.計畫 },
+                  { name: "衝動", value: totalImpulse, color: MOOD_COLORS.衝動 },
+                ].filter(d => d.value > 0);
                 return (
                   <Card className="p-6">
-                    <div className="flex items-start justify-between mb-5 gap-4">
+                    {/* Header */}
+                    <div className="flex items-start justify-between mb-4 gap-4">
                       <div>
-                        <p className="text-[16px] font-bold text-[var(--text-primary)] mb-0.5">消費性質趨勢</p>
-                        <p className="text-[14px]" style={{ color: "var(--text-sub)" }}>近 6 個月支出的必要 / 計畫 / 衝動佔比走勢</p>
+                        <p className="text-[16px] font-bold text-[var(--text-primary)] mb-0.5">支出心情分佈圖</p>
+                        <p className="text-[14px]" style={{ color: "var(--text-sub)" }}>近 6 個月支出的必要 / 計畫 / 衝動佔比</p>
                       </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-[20px] font-black tabular-nums" style={{ color: impulsePct >= 30 ? "#EF4444" : impulsePct >= 15 ? "#F59E0B" : "#10B981" }}>
-                          衝動 {impulsePct}%
-                        </p>
-                        <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>已標記 {avgTaggedPct}% 支出</p>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="text-right mr-2">
+                          <p className="text-[20px] font-black tabular-nums leading-tight"
+                            style={{ color: impulsePct >= 30 ? "#EF4444" : impulsePct >= 15 ? "#F59E0B" : "#10B981" }}>
+                            衝動 {impulsePct}%
+                          </p>
+                          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>已標記 {avgTaggedPct}% 支出</p>
+                        </div>
+                        {/* View toggle */}
+                        <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+                          {(["bar", "pie"] as const).map(v => (
+                            <button key={v}
+                              onClick={() => setMoodChartView(v)}
+                              className="px-2.5 py-1 text-[12px] font-medium"
+                              style={{
+                                background: moodChartView === v ? "var(--accent)" : "var(--bg-input)",
+                                color:      moodChartView === v ? "#fff"          : "var(--text-muted)",
+                              }}>
+                              {v === "bar" ? "📊 趨勢" : "🥧 分佈"}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <AreaChart data={moodTrend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                        <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false}
-                          tickFormatter={(v: number) => v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)} />
-                        <Tooltip
-                          formatter={(value: number, name: string) => [`NT$ ${fmt(value)}`, name]}
-                          contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", background: "var(--bg-card)", color: "var(--text-primary)", fontSize: 12 }} />
-                        <Legend wrapperStyle={{ fontSize: 13, paddingTop: 8 }} />
-                        <Area type="monotone" dataKey="必要" stackId="1" stroke="#10B981" fill="#10B98130" strokeWidth={2} />
-                        <Area type="monotone" dataKey="計畫" stackId="1" stroke="#6366F1" fill="#6366F130" strokeWidth={2} />
-                        <Area type="monotone" dataKey="衝動" stackId="1" stroke="#EF4444" fill="#EF444430" strokeWidth={2} />
-                      </AreaChart>
-                    </ResponsiveContainer>
+
+                    {/* Bar chart — monthly stacked */}
+                    {moodChartView === "bar" && (
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={moodTrend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }} barCategoryGap="35%">
+                          <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false}
+                            tickFormatter={(v: number) => v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)} />
+                          <Tooltip
+                            formatter={(value: number, name: string) => [`NT$ ${fmt(value)}`, name]}
+                            contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", background: "var(--bg-card)", color: "var(--text-primary)", fontSize: 12 }} />
+                          <Legend wrapperStyle={{ fontSize: 13, paddingTop: 8 }} />
+                          <Bar dataKey="必要" stackId="a" fill={MOOD_COLORS.必要} radius={[0, 0, 0, 0]} />
+                          <Bar dataKey="計畫" stackId="a" fill={MOOD_COLORS.計畫} radius={[0, 0, 0, 0]} />
+                          <Bar dataKey="衝動" stackId="a" fill={MOOD_COLORS.衝動} radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+
+                    {/* Pie chart — overall distribution */}
+                    {moodChartView === "pie" && (
+                      <div className="flex items-center gap-4">
+                        <ResponsiveContainer width="55%" height={180}>
+                          <PieChart>
+                            <Pie data={pieData} dataKey="value" nameKey="name"
+                              cx="50%" cy="50%" innerRadius={48} outerRadius={80}
+                              paddingAngle={2} strokeWidth={0}>
+                              {pieData.map((entry, i) => (
+                                <Cell key={i} fill={entry.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              formatter={(value: number, name: string) => [`NT$ ${fmt(value)}`, name]}
+                              contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", background: "var(--bg-card)", color: "var(--text-primary)", fontSize: 12 }} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div className="flex-1 space-y-3">
+                          {pieData.map(d => {
+                            const pct = Math.round((d.value / totalTagged) * 100);
+                            return (
+                              <div key={d.name}>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[13px] font-semibold flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: d.color }} />
+                                    {d.name}
+                                  </span>
+                                  <span className="text-[13px] font-bold" style={{ color: d.color }}>{pct}%</span>
+                                </div>
+                                <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--bg-input)" }}>
+                                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: d.color }} />
+                                </div>
+                                <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>NT$ {fmt(d.value)}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {avgTaggedPct < 30 && (
                       <p className="text-[13px] mt-4 text-center" style={{ color: "var(--text-muted)" }}>
                         目前僅標記 {avgTaggedPct}% 支出，在交易記錄中多標記「🏷 性質」可讓趨勢更準確
