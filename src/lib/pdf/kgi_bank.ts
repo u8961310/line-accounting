@@ -1,5 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (buffer: Buffer) => Promise<{ text: string }>;
 import type { ParsedTransaction } from "../csv/types";
 
 /**
@@ -161,6 +159,8 @@ export async function parseKgiBankPdf(buffer: Buffer): Promise<{
   transactions: ParsedTransaction[];
   lastBalance: { amount: number; date: Date } | null;
 }> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (b: Buffer) => Promise<{ text: string }>;
   const data = await pdfParse(buffer);
   return parseKgiBankPdfText(data.text);
 }

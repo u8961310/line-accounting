@@ -1,5 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (buffer: Buffer) => Promise<{ text: string }>;
 import { ParsedTransaction } from "../csv/types";
 
 export interface SinopacBillSummary {
@@ -31,6 +29,8 @@ function isPageMarker(line: string): boolean {
 }
 
 export async function parseSinopacCcPdf(buffer: Buffer): Promise<SinopacPdfResult> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (b: Buffer) => Promise<{ text: string }>;
   const data = await pdfParse(buffer);
   const lines = data.text.split("\n").map((l: string) => l.trim()).filter((l: string) => l.length > 0);
 
