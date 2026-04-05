@@ -18,7 +18,7 @@ import BudgetManager from "@/components/BudgetManager";
 import FixedExpenseManager from "@/components/FixedExpenseManager";
 import DebtOptimizer from "@/components/DebtOptimizer";
 import AnnualReport from "@/components/AnnualReport";
-import { RetirementCalc, FireCalc, IncomeStability, ExpenseRatio, AccountFlow, SpendingForecast, CashflowForecast } from "@/components/AdvancedAnalysis";
+import { RetirementCalc, FireCalc, IncomeStability, ExpenseRatio, AccountFlow, SpendingForecast, CashflowForecast, MilestoneTimeline } from "@/components/AdvancedAnalysis";
 import NotificationPanel from "@/components/NotificationPanel";
 import SubscriptionDetector from "@/components/SubscriptionDetector";
 import BillCalendar from "@/components/BillCalendar";
@@ -50,7 +50,7 @@ interface NetWorth {
   totalDebt: number; netWorth: number; monthlyInterest: number; totalInterestPaid: number;
 }
 type TabId = "charts" | "transactions" | "loans" | "budget" | "subscriptions" | "annual"
-  | "retirement" | "fire" | "income-stability" | "expense-ratio" | "account-flow" | "spending-forecast" | "cashflow-forecast" | "bill-calendar" | "grad-school" | "savings-plan" | "education-program"
+  | "retirement" | "fire" | "income-stability" | "expense-ratio" | "account-flow" | "spending-forecast" | "cashflow-forecast" | "bill-calendar" | "grad-school" | "savings-plan" | "education-program" | "milestone"
   | "import" | "guide" | "audit" | "categories" | "duplicate-review" | "clean-other";
 interface MonthDetail {
   byCategory: CategorySummary[];
@@ -127,6 +127,7 @@ const PLANNING_TABS: { id: TabId; label: string; icon: string }[] = [
   { id: "retirement",        label: "退休金試算",  icon: "🏖️" },
   { id: "fire",              label: "FIRE 試算",   icon: "🔥" },
   { id: "bill-calendar",     label: "帳單日曆",    icon: "📅" },
+  { id: "milestone",         label: "里程碑時間軸", icon: "📍" },
 ];
 
 // ── Note Templates ────────────────────────────────────────────────────────────
@@ -4635,6 +4636,7 @@ export default function DashboardPage() {
         {activeTab === "savings-plan"       && <SavingsPlan          isDemo={isDemo.current} onNavigate={t => setActiveTab(t as TabId)} />}
         {activeTab === "education-program" && <EducationProgramPlanner isDemo={isDemo.current} />}
         {activeTab === "grad-school"       && <GradSchoolPlanner       isDemo={isDemo.current} />}
+        {activeTab === "milestone"         && <MilestoneTimeline       isDemo={isDemo.current} />}
 
         {/* ── Payees ── */}
 

@@ -976,3 +976,268 @@ export function CashflowForecast({ isDemo }: { isDemo: boolean }) {
     </Card>
   );
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// 8. 財務里程碑時間軸
+// ══════════════════════════════════════════════════════════════════════════
+
+interface MilestoneItem {
+  id: string;
+  label: string;
+  emoji: string;
+  date: Date;
+  color: string;
+  pct?: number;
+}
+
+export function MilestoneTimeline({ isDemo }: { isDemo: boolean }) {
+  const [items,   setItems]   = useState<MilestoneItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (isDemo) {
+      const now = new Date();
+      setItems([
+        { id: "g1",   label: "緊急備用金",   emoji: "🛡️", date: new Date(now.getFullYear() + 1, 5, 1),   color: "#3B82F6", pct: 60 },
+        { id: "g2",   label: "換電腦",        emoji: "💻", date: new Date(now.getFullYear() + 2, 0, 1),   color: "#3B82F6", pct: 30 },
+        { id: "grad", label: "研究所入學",     emoji: "🎓", date: new Date(2028, 8, 1),                    color: "#8B5CF6", pct: 35 },
+        { id: "loan", label: "凱基貸款還清",   emoji: "🏦", date: new Date(now.getFullYear() + 5, 3, 1),  color: "#EF4444" },
+        { id: "fire", label: "FIRE 財務獨立",  emoji: "🔥", date: new Date(now.getFullYear() + 15, 0, 1), color: "#F59E0B", pct: 5 },
+      ]);
+      setLoading(false);
+      return;
+    }
+
+    Promise.all([
+      fetch("/api/goals").then(r => r.json()),
+      fetch("/api/balances").then(r => r.json()),
+      fetch("/api/summary?months=6").then(r => r.json()),
+      fetch("/api/loans").then(r => r.json()),
+    ]).then(([goals, balances, summary, loans]: [
+      { id: string; name: string; emoji: string; savedAmount: number; targetAmount: number; deadline: string | null }[],
+      { balance: number }[],
+      { monthly: { income: number; expense: number }[] },
+      { id: string; name: string; status: string; endDate: string | null }[],
+    ]) => {
+      const now = new Date();
+      const result: MilestoneItem[] = [];
+
+      const months6 = summary.monthly ?? [];
+      const avgMonthlyNet = months6.length > 0
+        ? months6.reduce((s, m) => s + (m.income - m.expense), 0) / months6.length
+        : 0;
+      const avgExpense = months6.length > 0
+        ? months6.reduce((s, m) => s + m.expense, 0) / months6.length
+        : 0;
+
+      // Goals
+      for (const g of goals) {
+        if (g.targetAmount > 0 && g.savedAmount >= g.targetAmount) continue;
+        const pct = g.targetAmount > 0 ? Math.min(100, (g.savedAmount / g.targetAmount) * 100) : undefined;
+        if (g.deadline) {
+          result.push({ id: `goal-${g.id}`, label: g.name, emoji: g.emoji || "🎯", date: new Date(g.deadline), color: "#3B82F6", pct });
+        } else if (g.targetAmount > 0 && avgMonthlyNet > 0) {
+          const remaining = g.targetAmount - g.savedAmount;
+          const mths = Math.ceil(remaining / avgMonthlyNet);
+          if (mths > 0 && mths <= 600) {
+            const d = new Date(now);
+            d.setMonth(d.getMonth() + mths);
+            result.push({ id: `goal-${g.id}`, label: g.name, emoji: g.emoji || "🎯", date: d, color: "#3B82F6", pct });
+          }
+        }
+      }
+
+      // Grad school (fixed)
+      result.push({ id: "grad-school", label: "研究所入學", emoji: "🎓", date: new Date(2028, 8, 1), color: "#8B5CF6" });
+
+      // Active loans with end dates
+      for (const loan of loans) {
+        if (loan.status === "active" && loan.endDate) {
+          result.push({ id: `loan-${loan.id}`, label: `${loan.name} 還清`, emoji: "🏦", date: new Date(loan.endDate), color: "#EF4444" });
+        }
+      }
+
+      // FIRE (4% rule, 5% annual return)
+      const totalAssets = balances.filter(b => b.balance > 0).reduce((s, b) => s + b.balance, 0);
+      if (avgExpense > 0) {
+        const fireTarget = avgExpense * 12 * 25;
+        if (totalAssets < fireTarget) {
+          const mths = monthsToTarget(totalAssets, Math.max(avgMonthlyNet, 0), 5, fireTarget);
+          if (mths > 0 && mths <= 600) {
+            const fireDate = new Date(now);
+            fireDate.setMonth(fireDate.getMonth() + mths);
+            result.push({
+              id: "fire", label: "FIRE 財務獨立", emoji: "🔥", date: fireDate, color: "#F59E0B",
+              pct: Math.min(100, (totalAssets / fireTarget) * 100),
+            });
+          }
+        }
+      }
+
+      result.sort((a, b) => a.date.getTime() - b.date.getTime());
+      setItems(result);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [isDemo]);
+
+  if (loading) return (
+    <Card>
+      <SectionHeader title="📍 財務里程碑時間軸" sub="從現在到財務獨立的重要節點一覽" />
+      <div className="px-5 py-10 text-center text-[14px]" style={{ color: "var(--text-muted)" }}>載入中…</div>
+    </Card>
+  );
+
+  if (items.length === 0) return (
+    <Card>
+      <SectionHeader title="📍 財務里程碑時間軸" sub="從現在到財務獨立的重要節點一覽" />
+      <div className="px-5 py-10 text-center text-[14px]" style={{ color: "var(--text-muted)" }}>
+        尚無里程碑資料，請先設定財務目標或貸款
+      </div>
+    </Card>
+  );
+
+  // ── Layout ────────────────────────────────────────────────────────────────
+  const now       = new Date();
+  const startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const last      = items[items.length - 1];
+  const endDate   = new Date(last.date.getFullYear(), last.date.getMonth() + 4, 1);
+  const totalMs   = endDate.getTime() - startDate.getTime();
+
+  // 52px per month keeps it readable
+  const totalMonths = Math.ceil(totalMs / (1000 * 60 * 60 * 24 * 30.44));
+  const totalWidth  = Math.max(totalMonths * 52, 700);
+
+  function xOf(date: Date) {
+    return ((date.getTime() - startDate.getTime()) / totalMs) * totalWidth;
+  }
+
+  const todayX = xOf(now);
+
+  // Year tick marks
+  const yearTicks: { year: number; x: number }[] = [];
+  for (let y = startDate.getFullYear(); y <= endDate.getFullYear() + 1; y++) {
+    const x = xOf(new Date(y, 0, 1));
+    if (x >= 0 && x <= totalWidth + 10) yearTicks.push({ year: y, x });
+  }
+
+  // Alternating top/bottom layout constants
+  const LINE_Y    = 140;
+  const CONNECTOR = 36;
+  const CARD_W    = 104;
+  const CARD_H    = 88;
+  const TOTAL_H   = LINE_Y + CONNECTOR + CARD_H + 32; // ~296
+
+  return (
+    <Card>
+      <SectionHeader title="📍 財務里程碑時間軸" sub="從現在到財務獨立的重要節點一覽" />
+      <div className="px-4 py-4 space-y-3">
+        <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid var(--border-inner)" }}>
+          <div style={{ position: "relative", width: totalWidth, height: TOTAL_H, padding: "0 16px" }}>
+
+            {/* Vertical year grid lines */}
+            {yearTicks.map(t => (
+              <div key={t.year} style={{
+                position: "absolute", top: 0, bottom: 0, left: t.x,
+                width: 1, background: "var(--border-inner)", opacity: 0.4,
+              }} />
+            ))}
+
+            {/* Year labels (at bottom) */}
+            {yearTicks.map(t => (
+              <div key={`y${t.year}`} style={{
+                position: "absolute", bottom: 6, left: t.x - 14,
+                fontSize: 11, color: "var(--text-muted)", fontWeight: 600, userSelect: "none",
+              }}>{t.year}</div>
+            ))}
+
+            {/* Main axis */}
+            <div style={{
+              position: "absolute", top: LINE_Y, left: 0, right: 0, height: 2,
+              background: "var(--border)",
+            }} />
+
+            {/* Today marker */}
+            {todayX >= 0 && (
+              <div style={{ position: "absolute", top: LINE_Y - 22, left: todayX - 1, zIndex: 5 }}>
+                <div style={{ width: 2, height: 44, background: "#10B981" }} />
+                <div style={{
+                  position: "absolute", top: -17, left: "50%", transform: "translateX(-50%)",
+                  fontSize: 10, color: "#10B981", fontWeight: 700, whiteSpace: "nowrap",
+                  background: "var(--bg-card)", padding: "1px 5px", borderRadius: 4,
+                  border: "1px solid #10B98140",
+                }}>今天</div>
+              </div>
+            )}
+
+            {/* Milestones */}
+            {items.map((item, i) => {
+              const x       = xOf(item.date);
+              const isTop   = i % 2 === 0;
+              const connTop = isTop ? LINE_Y - CONNECTOR - 2 : LINE_Y + 2;
+              const cardTop = isTop ? connTop - CARD_H        : connTop + CONNECTOR;
+
+              return (
+                <div key={item.id}>
+                  {/* Dot on axis */}
+                  <div style={{
+                    position: "absolute", top: LINE_Y - 7, left: x - 7,
+                    width: 14, height: 14, borderRadius: "50%",
+                    background: item.color, border: "2px solid var(--bg-card)",
+                    zIndex: 4,
+                  }} />
+                  {/* Connector */}
+                  <div style={{
+                    position: "absolute", top: connTop, left: x - 1,
+                    width: 2, height: CONNECTOR, background: item.color + "60",
+                  }} />
+                  {/* Label card */}
+                  <div style={{
+                    position: "absolute", top: cardTop, left: x - CARD_W / 2,
+                    width: CARD_W, padding: "6px 6px",
+                    borderRadius: 10,
+                    background: "var(--bg-input)",
+                    border: `1px solid ${item.color}50`,
+                    textAlign: "center",
+                    zIndex: 3,
+                  }}>
+                    <div style={{ fontSize: 20, lineHeight: 1 }}>{item.emoji}</div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1.3, marginTop: 3 }}>
+                      {item.label}
+                    </div>
+                    <div style={{ fontSize: 9, color: item.color, marginTop: 2, fontWeight: 600 }}>
+                      {item.date.getFullYear()}/{String(item.date.getMonth() + 1).padStart(2, "0")}
+                    </div>
+                    {item.pct !== undefined && (
+                      <div style={{ marginTop: 5, height: 3, borderRadius: 2, background: "var(--border)" }}>
+                        <div style={{ width: `${item.pct}%`, height: "100%", borderRadius: 2, background: item.color }} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="flex flex-wrap gap-4 text-[13px]">
+          {[
+            { color: "#3B82F6", label: "財務目標" },
+            { color: "#8B5CF6", label: "人生規劃" },
+            { color: "#EF4444", label: "貸款還清" },
+            { color: "#F59E0B", label: "FIRE" },
+          ].map(l => (
+            <div key={l.label} className="flex items-center gap-1.5">
+              <div style={{ width: 10, height: 10, borderRadius: "50%", background: l.color, flexShrink: 0 }} />
+              <span style={{ color: "var(--text-muted)" }}>{l.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
+          * 無截止日的目標依當前月均淨收入估算；FIRE 採 4% 法則（25× 月支出）＋ 5% 年化報酬率試算
+        </p>
+      </div>
+    </Card>
+  );
+}

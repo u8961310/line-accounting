@@ -75,6 +75,7 @@ const FLOW: FlowSection[] = [
       { icon: "🔁", label: "訂閱偵測",    sub: "自動識別每月重複支出（±5% 容忍）",               color: "#06B6D4" },
       { icon: "✨", label: "AI 洞察",     sub: "月度毒舌分析 + z-score 異常偵測 + QuickChart 圖表", color: "#8B5CF6" },
       { icon: "📈", label: "進階分析",    sub: "FIRE / 退休 / 帳戶流量 / 年報",                  color: "#6366F1" },
+      { icon: "📍", label: "財務里程碑",  sub: "所有目標 + 研究所 + FIRE 統一橫向時間軸",          color: "#8B5CF6" },
     ],
   },
   {
@@ -156,6 +157,7 @@ const QUICK_REF = [
   { icon: "🔁", action: "識別訂閱自動扣款",           where: "訂閱偵測 Tab",                           color: "#10B981" },
   { icon: "📈", action: "FIRE / 退休 / 年報分析",    where: "Header → 進階分析",                      color: "#6366F1" },
   { icon: "🎓", action: "研究所 / 財務規劃",          where: "Header → 財務規劃",                      color: "#6366F1" },
+  { icon: "📍", action: "財務里程碑時間軸",           where: "Header → 財務規劃 → 里程碑時間軸",        color: "#8B5CF6" },
   { icon: "🔔", action: "查看所有警示通知",           where: "Header 右側鈴鐺",                        color: "#EF4444" },
   { icon: "📄", action: "列印正式財務報表",           where: "Header → 工具 → 列印月報",              color: "#F59E0B" },
   { icon: "🛡️", action: "備份 / 還原所有交易",       where: "工具 → 匯入資料 → 備份 / 還原",         color: "#94A3B8" },
@@ -333,6 +335,22 @@ const FEATURES: FeatureSection[] = [
       { label: "可手動修改個別分類後，點「套用選取」一鍵更新" },
     ],
     note: "分類完成後可繼續點「重新分析」清理剩餘的「其他」交易，直到全部清乾淨。",
+  },
+  {
+    icon: "📍",
+    title: "財務里程碑時間軸",
+    color: "#8B5CF6",
+    isNew: true,
+    items: [
+      { label: "Header → 財務規劃 → 里程碑時間軸" },
+      { label: "橫向可捲動時間軸，所有節點交錯上下排列" },
+      { label: "研究所入學（2028/09）自動列為固定節點" },
+      { label: "財務目標：有截止日用設定日期；無截止日依月均淨收入估算達成時間" },
+      { label: "貸款：有 endDate 的貸款自動列為「還清」里程碑" },
+      { label: "FIRE：4% 法則（25× 月支出）＋ 5% 年化報酬率自動試算" },
+      { label: "節點色：藍色 = 財務目標、紫色 = 人生規劃、紅色 = 貸款、橘色 = FIRE" },
+    ],
+    note: "進度條顯示各目標目前完成 %；目標未設截止日時，先設定後即以固定日期顯示更準確。",
   },
   {
     icon: "🏷️",
