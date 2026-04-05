@@ -584,6 +584,7 @@ export default function DashboardPage() {
   const [aiInsight,      setAiInsight]      = useState<{ insight: string; charts: { donut?: string | null; bar?: string | null }; meta: { totalIncome: number; totalExpense: number; savingRate: string; overBudgetCount: number } } | null>(null);
   const [aiInsightLoading, setAiInsightLoading] = useState(false);
   const [aiInsightErr,     setAiInsightErr]     = useState<string | null>(null);
+  const [aiInsightOpen,    setAiInsightOpen]    = useState(true);
   const [notionSyncingInsight, setNotionSyncingInsight] = useState(false);
   const [notionInsightUrl,     setNotionInsightUrl]     = useState<string | null>(null);
   const [anomalies,      setAnomalies]      = useState<{ category: string; current: number; mean: number; stddev: number; zscore: number; prevMonths: number[] }[]>([]);
@@ -1898,37 +1899,56 @@ export default function DashboardPage() {
             {/* ── AI 月度洞察 ── */}
             <div className="rounded-2xl overflow-hidden"
               style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "var(--card-shadow)" }}>
-              <div className="flex items-center justify-between px-5 py-3.5"
-                style={{ borderBottom: aiInsight || aiInsightLoading ? "1px solid var(--border-inner)" : "none" }}>
+              {/* Header — 點擊可折疊（已有洞察時） */}
+              <div
+                className={`flex items-center justify-between px-5 py-3.5 ${aiInsight ? "cursor-pointer hover:opacity-80 transition-opacity" : ""}`}
+                style={{ borderBottom: (aiInsight || aiInsightLoading) && aiInsightOpen ? "1px solid var(--border-inner)" : "none" }}
+                onClick={() => aiInsight && setAiInsightOpen(v => !v)}>
                 <div className="flex items-center gap-2">
                   <span className="text-[16px]">✨</span>
                   <div>
                     <p className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>AI 月度洞察</p>
                     <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
-                      {currentMonth} · Claude 自動分析個人化建議
+                      {currentMonth} · 毒舌財務健檢
+                      {aiInsight && !aiInsightOpen && (
+                        <span className="ml-2 px-2 py-0.5 rounded-full text-[11px]"
+                          style={{ background: "rgba(99,102,241,0.15)", color: "#818CF8" }}>
+                          已折疊
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
-                {!aiInsight && !aiInsightLoading && (
-                  <button
-                    onClick={fetchAiInsight}
-                    className="px-3 py-1.5 rounded-xl text-[13px] font-semibold text-white transition-opacity hover:opacity-80"
-                    style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)" }}>
-                    產生報告
-                  </button>
-                )}
-                {aiInsight && !aiInsightLoading && (
-                  <button
-                    onClick={() => { setAiInsight(null); setNotionInsightUrl(null); fetchAiInsight(); }}
-                    className="px-3 py-1.5 rounded-xl text-[13px] font-semibold transition-opacity hover:opacity-80"
-                    style={{ background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border-inner)" }}>
-                    重新分析
-                  </button>
-                )}
+                <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                  {!aiInsight && !aiInsightLoading && (
+                    <button
+                      onClick={fetchAiInsight}
+                      className="px-3 py-1.5 rounded-xl text-[13px] font-semibold text-white transition-opacity hover:opacity-80"
+                      style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)" }}>
+                      產生報告
+                    </button>
+                  )}
+                  {aiInsight && !aiInsightLoading && (
+                    <>
+                      <button
+                        onClick={() => { setAiInsight(null); setNotionInsightUrl(null); setAiInsightOpen(true); fetchAiInsight(); }}
+                        className="px-3 py-1.5 rounded-xl text-[13px] font-semibold transition-opacity hover:opacity-80"
+                        style={{ background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border-inner)" }}>
+                        重新分析
+                      </button>
+                      <button
+                        onClick={() => setAiInsightOpen(v => !v)}
+                        className="px-2.5 py-1.5 rounded-xl text-[13px] transition-opacity hover:opacity-80"
+                        style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "1px solid var(--border-inner)" }}>
+                        {aiInsightOpen ? "▲" : "▼"}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
               {aiInsightLoading && (
                 <div className="px-5 py-6 text-center">
-                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>✨ Claude 正在分析中，請稍候…</p>
+                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>🔪 Claude 正在磨刀，請稍候…</p>
                 </div>
               )}
               {aiInsightErr && !aiInsightLoading && (
@@ -1936,7 +1956,7 @@ export default function DashboardPage() {
                   <p className="text-[14px]" style={{ color: "#F87171" }}>{aiInsightErr}</p>
                 </div>
               )}
-              {aiInsight && !aiInsightLoading && (
+              {aiInsight && !aiInsightLoading && aiInsightOpen && (
                 <div className="px-5 py-4 space-y-4">
                   {/* meta 摘要列 */}
                   <div className="flex gap-3 flex-wrap text-[13px]">
