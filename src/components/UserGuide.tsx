@@ -21,33 +21,35 @@ const FLOW: FlowSection[] = [
     nodes: [
       { icon: "💬", label: "LINE 記帳", sub: "AI 自動解析金額、分類、備註", color: "#10B981" },
       { icon: "📁", label: "CSV / PDF 匯入", sub: "支援 8 家銀行 + 5 家信用卡自動偵測", color: "#3B82F6" },
-      { icon: "✏️", label: "手動記帳", sub: "Dashboard 直接新增 / 編輯", color: "#8B5CF6" },
+      { icon: "✏️", label: "手動記帳", sub: "Dashboard 直接新增 / 編輯 / 行內金額修改", color: "#8B5CF6" },
     ],
   },
   {
     stage: "② 核心處理",
     nodes: [
       { icon: "🗄️", label: "PostgreSQL 資料庫", sub: "去重偵測（日期 + 金額 + 來源）", color: "#F59E0B" },
-      { icon: "📓", label: "Notion 同步", sub: "背景單向同步，不影響主流程", color: "#6366F1" },
+      { icon: "📓", label: "Notion 同步", sub: "交易背景同步；月報可手動推送", color: "#6366F1" },
     ],
   },
   {
     stage: "③ 分析模組",
     nodes: [
-      { icon: "📊", label: "收支統計", sub: "月摘要、分類圓餅、趨勢折線", color: "#3B82F6" },
-      { icon: "🎯", label: "預算控制", sub: "各分類上限設定與超標警示", color: "#EF4444" },
+      { icon: "📊", label: "收支統計", sub: "月摘要、分類圓餅、趨勢折線、YoY 年同期", color: "#3B82F6" },
+      { icon: "🎯", label: "預算控制", sub: "各分類上限 + 超標警示 + 歷史建議預算", color: "#EF4444" },
       { icon: "🏦", label: "帳戶 & 淨資產", sub: "銀行餘額、淨資產快照", color: "#10B981" },
       { icon: "💳", label: "信用卡 & 貸款", sub: "帳單管理、還款時間軸", color: "#F59E0B" },
-      { icon: "🔁", label: "訂閱偵測", sub: "自動識別每月重複支出", color: "#06B6D4" },
-      { icon: "📈", label: "進階分析", sub: "FIRE / 退休 / 帳戶流量 / 年報", color: "#8B5CF6" },
+      { icon: "🔁", label: "訂閱偵測", sub: "自動識別每月重複支出（±5% 容忍）", color: "#06B6D4" },
+      { icon: "✨", label: "AI 洞察", sub: "月度毒舌分析 + z-score 異常偵測 + QuickChart 圖表", color: "#8B5CF6" },
+      { icon: "📈", label: "進階分析", sub: "FIRE / 退休 / 帳戶流量 / 年報", color: "#6366F1" },
     ],
   },
   {
     stage: "④ 輸出 & 警示",
     nodes: [
-      { icon: "🖥️", label: "Dashboard 圖表", sub: "即時更新，支援主題切換", color: "#10B981" },
+      { icon: "🖥️", label: "Dashboard 圖表", sub: "即時更新，三主題切換，每日箴言", color: "#10B981" },
       { icon: "🔔", label: "通知中心", sub: "預算超標 / 帳單到期 / 目標落後", color: "#EF4444" },
-      { icon: "📄", label: "列印報表", sub: "月報 / 年報 HTML 正式格式", color: "#6366F1" },
+      { icon: "📄", label: "列印報表", sub: "月報 / 年報 HTML 正式格式", color: "#F59E0B" },
+      { icon: "📝", label: "Notion 月報", sub: "AI 洞察 + 圖表 + 支出表同步至 Notion", color: "#6366F1" },
     ],
   },
 ];
@@ -75,10 +77,11 @@ const WORKFLOWS: WorkflowPhase[] = [
     freq: "首次使用，一次性",
     steps: [
       { icon: "1", title: "匯入歷史資料", desc: "工具 → 匯入資料，上傳銀行 CSV／PDF，系統自動去重", tag: "必做", tagColor: "#EF4444" },
-      { icon: "2", title: "設定每月預算", desc: "預算控制 Tab → 各消費分類設定上限（飲食、交通、娛樂…）", tag: "建議", tagColor: "#F59E0B" },
+      { icon: "2", title: "設定每月預算", desc: "預算控制 Tab → 各消費分類設定上限，或用「歷史建議」一鍵套用近 3 月平均", tag: "建議", tagColor: "#F59E0B" },
       { icon: "3", title: "登記固定支出", desc: "負債管理 → 固定支出，記錄房租、訂閱費、保險等固定項目", tag: "建議", tagColor: "#F59E0B" },
       { icon: "4", title: "新增貸款 / 信用卡", desc: "負債管理 Tab → 輸入貸款餘額、利率；信用卡截止日、信額", tag: "選填", tagColor: "#10B981" },
       { icon: "5", title: "設定財務目標", desc: "財務規劃 → 儲蓄規劃，設定緊急備用金、研究所、教育程式目標金額", tag: "選填", tagColor: "#10B981" },
+      { icon: "6", title: "設定 Notion 月報頁面", desc: "在 .env 加入 NOTION_MONTHLY_REPORT_PAGE_ID，之後可一鍵同步 AI 月報至 Notion", tag: "選填", tagColor: "#10B981" },
     ],
   },
   {
@@ -87,7 +90,7 @@ const WORKFLOWS: WorkflowPhase[] = [
     freq: "每次消費後",
     steps: [
       { icon: "💬", title: "LINE 快速記帳", desc: "傳送「早餐 80」「計程車 320」，AI 自動解析分類與金額", tag: "最快", tagColor: "#10B981" },
-      { icon: "✏️", title: "Dashboard 手動補記", desc: "交易記錄 Tab → ＋ 新增，適合現金消費或需要細節備註時", tag: "補充", tagColor: "#6366F1" },
+      { icon: "✏️", title: "Dashboard 手動補記", desc: "交易記錄 Tab → ＋ 新增，適合現金消費；點擊金額可行內直接修改", tag: "補充", tagColor: "#6366F1" },
       { icon: "🔔", title: "查看通知警示", desc: "Header 鈴鐺 → 確認預算使用狀況，超標立即調整消費", tag: "隨時", tagColor: "#EF4444" },
     ],
   },
@@ -96,7 +99,8 @@ const WORKFLOWS: WorkflowPhase[] = [
     color: "#3B82F6",
     freq: "每週一次",
     steps: [
-      { icon: "📊", title: "確認本週支出", desc: "圖表分析 → 交易記錄篩選本週，確認分類是否正確", tag: "10 分鐘", tagColor: "#3B82F6" },
+      { icon: "📊", title: "確認本週支出", desc: "交易記錄 → 快速日期按鈕「本週」，確認分類是否正確", tag: "10 分鐘", tagColor: "#3B82F6" },
+      { icon: "📈", title: "查看異常支出警示", desc: "圖表 Tab 頂端橘色 Banner — z-score 自動偵測超出歷史平均的分類", tag: "自動", tagColor: "#FB923C" },
       { icon: "🔁", title: "識別訂閱費用", desc: "訂閱偵測 Tab → 確認新偵測的重複扣款是否為訂閱", tag: "選做", tagColor: "#06B6D4" },
     ],
   },
@@ -107,6 +111,8 @@ const WORKFLOWS: WorkflowPhase[] = [
     steps: [
       { icon: "📁", title: "匯入銀行對帳單", desc: "工具 → 匯入資料，上傳當月 CSV，補齊銀行端記錄", tag: "必做", tagColor: "#EF4444" },
       { icon: "💳", title: "繳清信用卡帳單", desc: "負債管理 → 信用卡，標記帳單已付，更新帳戶餘額", tag: "必做", tagColor: "#EF4444" },
+      { icon: "✨", title: "產生 AI 月度洞察", desc: "圖表 Tab → AI 月度洞察 → 選當月 → 產生報告，毒舌分析 + 兩張 QuickChart 圖表", tag: "建議", tagColor: "#8B5CF6" },
+      { icon: "📝", title: "同步月報至 Notion", desc: "AI 洞察卡片 → 📝 同步到 Notion，自動建立含圖表的結構化月報頁面", tag: "選做", tagColor: "#6366F1" },
       { icon: "🎯", title: "審查預算達成", desc: "預算控制 Tab → 查看各分類達成率，調整下月預算上限", tag: "建議", tagColor: "#F59E0B" },
       { icon: "🏦", title: "更新帳戶餘額", desc: "圖表分析 → 帳戶餘額，對照銀行 App 確認數字一致", tag: "建議", tagColor: "#F59E0B" },
       { icon: "📄", title: "列印月度財報", desc: "Header → 工具 → 列印月報，產出正式 HTML 財務報表", tag: "選做", tagColor: "#10B981" },
@@ -155,15 +161,54 @@ const FEATURES: FeatureSection[] = [
   },
   {
     icon: "✏️",
-    title: "手動新增記帳",
+    title: "手動新增 & 行內編輯",
     color: "#8B5CF6",
     items: [
-      { label: "進入「交易記錄」頁面" },
-      { label: "點擊標題列「＋ 新增」按鈕" },
-      { label: "填入日期、類型、金額、分類、備註" },
-      { label: "儲存後立即出現在記錄中，圖表同步更新" },
+      { label: "交易記錄 Tab → ＋ 新增，填入日期、類型、金額、分類、備註" },
+      { label: "點擊金額數字可直接行內編輯，Enter 儲存 / Escape 取消" },
+      { label: "點擊分類文字可下拉快速修改分類" },
+      { label: "點擊備註可行內編輯文字" },
+      { label: "批次選取後可一次修改分類或備註" },
     ],
-    note: "適合記錄現金消費、非銀行往來的臨時收支。",
+    note: "適合記錄現金消費、非銀行往來的臨時收支。行內編輯免開 Modal，更快速。",
+  },
+  {
+    icon: "✨",
+    title: "AI 月度洞察",
+    color: "#8B5CF6",
+    items: [
+      { label: "圖表 Tab → AI 月度洞察卡片 → 選月份 → 產生報告" },
+      { label: "毒舌風格分析：一句話總評 + 問題條列 + 具體行動建議" },
+      { label: "自動生成支出分類佔比（Donut）+ 月份對比（Bar）兩張圖表" },
+      { label: "📝 同步到 Notion：含 AI 文字 + 圖表 + 支出明細表格" },
+      { label: "可選歷史任意月份分析，非僅限本月" },
+    ],
+    note: "點「產生報告」後約需 3-5 秒，分析完可折疊收起，不佔版面。",
+  },
+  {
+    icon: "📈",
+    title: "支出異常偵測",
+    color: "#FB923C",
+    items: [
+      { label: "圖表 Tab 頂端自動顯示橘色 Banner（無需手動觸發）" },
+      { label: "以 z-score 統計：當月 > 過去 4 月平均 1.5 個標準差即觸發" },
+      { label: "顯示分類、本月金額、歷史平均、z-score 數值" },
+      { label: "標準差 < NT$100 的分類不顯示（波動不大無意義）" },
+    ],
+    note: "比固定閾值更聰明，自動適應個人消費習慣。進入圖表 Tab 時自動計算。",
+  },
+  {
+    icon: "🎯",
+    title: "預算控制 & 建議",
+    color: "#EF4444",
+    items: [
+      { label: "預算控制 Tab → 各分類設定上限 → 即時顯示已用 % 和剩餘金額" },
+      { label: "⚖️ 50/30/20 建議：依可分配收入自動試算各分類理想上限" },
+      { label: "📊 歷史建議：根據近 3 個月實際支出平均 +10% 自動試算" },
+      { label: "圖表 Tab → 分類預算快覽列：所有分類進度條一覽，超標變紅" },
+      { label: "超標 / 接近上限時 Header 鈴鐺 Badge 同步提示" },
+    ],
+    note: "「歷史建議」適合已有 3 個月以上資料的使用者，比 50/30/20 更貼近實際習慣。",
   },
   {
     icon: "💵",
@@ -191,11 +236,25 @@ const FEATURES: FeatureSection[] = [
     note: "每次點開鈴鐺時從最新資料重新計算，無需手動刷新。",
   },
   {
+    icon: "📅",
+    title: "收支日曆 & 熱力圖",
+    color: "#06B6D4",
+    items: [
+      { label: "交易記錄 Tab → 📅 切換至日曆視圖" },
+      { label: "📅 收支模式：每格顯示當日支出總額（紅色深淺代表金額高低）" },
+      { label: "純收入日顯示綠色，hover 彈出當日交易明細" },
+      { label: "🔥 熱力模式：改用色塊強度顯示消費密度" },
+      { label: "點擊月份左右箭頭瀏覽歷史月份" },
+    ],
+    note: "hover popup 顯示當日每筆交易的分類、備註、金額，不需進入篩選即可快速查看。",
+  },
+  {
     icon: "📈",
     title: "進階財務分析",
-    color: "#8B5CF6",
+    color: "#6366F1",
     items: [
       { label: "年度財報 — 全年收支、12 月走勢、支出分類排行" },
+      { label: "同月去年比較（YoY）— 今年 vs 去年同月各分類對比" },
       { label: "退休金試算 — 目標金額 + 月儲蓄 + 報酬率" },
       { label: "FIRE 試算 — 4% 法則：月支出×300 = FI 目標" },
       { label: "收入穩定性 — 標準差、變異係數、月收入走勢" },
@@ -216,6 +275,27 @@ const FEATURES: FeatureSection[] = [
     ],
     note: "還清時間以複利模擬，信用卡利率預設 18%，可依實際利率調整。",
   },
+];
+
+// ── Quick Reference Table ─────────────────────────────────────────────────────
+const QUICK_REF = [
+  { icon: "💬", action: "用 LINE 傳訊息記帳", where: "LINE App → 加入 Bot 好友", color: "#10B981" },
+  { icon: "📁", action: "上傳銀行 CSV / PDF", where: "工具 → 匯入資料", color: "#3B82F6" },
+  { icon: "✏️", action: "手動新增 / 行內編輯交易", where: "交易記錄 Tab → ＋ 新增 / 點金額", color: "#8B5CF6" },
+  { icon: "🎯", action: "設定每月分類預算", where: "預算控制 Tab", color: "#EF4444" },
+  { icon: "📊", action: "歷史消費建議預算", where: "預算控制 Tab → 依歷史消費建議", color: "#3B82F6" },
+  { icon: "✨", action: "AI 月度洞察報告", where: "圖表 Tab → AI 月度洞察", color: "#8B5CF6" },
+  { icon: "📝", action: "同步月報至 Notion", where: "AI 月度洞察 → 📝 同步到 Notion", color: "#6366F1" },
+  { icon: "📈", action: "異常支出自動偵測", where: "圖表 Tab 頂端（自動顯示）", color: "#FB923C" },
+  { icon: "🏦", action: "管理貸款還款明細", where: "負債管理 Tab", color: "#F59E0B" },
+  { icon: "💳", action: "查看信用卡帳單", where: "負債管理 Tab → 信用卡", color: "#06B6D4" },
+  { icon: "📅", action: "收支日曆 / 熱力圖", where: "交易記錄 Tab → 📅 日曆", color: "#06B6D4" },
+  { icon: "🔁", action: "識別訂閱自動扣款", where: "訂閱偵測 Tab", color: "#10B981" },
+  { icon: "📈", action: "FIRE / 退休 / 年報分析", where: "Header → 進階分析", color: "#6366F1" },
+  { icon: "🎓", action: "研究所 / 財務規劃", where: "Header → 財務規劃", color: "#6366F1" },
+  { icon: "🔔", action: "查看所有警示通知", where: "Header 右側鈴鐺", color: "#EF4444" },
+  { icon: "📄", action: "列印正式財務報表", where: "Header → 工具 → 列印月報", color: "#F59E0B" },
+  { icon: "🛡️", action: "備份 / 還原所有交易", where: "工具 → 匯入資料 → 備份 / 還原", color: "#94A3B8" },
 ];
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -259,14 +339,12 @@ function FlowNodeCard({ node }: { node: FlowNode }) {
 function WorkflowPhaseCard({ phase }: { phase: WorkflowPhase }) {
   return (
     <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${phase.color}40` }}>
-      {/* Phase Header */}
       <div className="flex items-center justify-between px-5 py-3"
         style={{ background: `${phase.color}18`, borderBottom: `1px solid ${phase.color}30` }}>
         <span className="text-[14px] font-bold" style={{ color: phase.color }}>{phase.phase}</span>
         <span className="text-[11px] px-2.5 py-0.5 rounded-full font-medium"
           style={{ background: `${phase.color}25`, color: phase.color }}>{phase.freq}</span>
       </div>
-      {/* Steps */}
       <div className="divide-y" style={{ background: "var(--bg-card)", borderColor: "var(--border-inner)" }}>
         {phase.steps.map((step, i) => (
           <div key={i} className="flex items-start gap-3 px-5 py-3">
@@ -333,7 +411,6 @@ export default function UserGuide() {
         <h2 className="text-[15px] font-bold mb-6 text-center" style={{ color: "var(--text-primary)" }}>
           系統資料流程圖
         </h2>
-
         {FLOW.map((section, si) => (
           <React.Fragment key={si}>
             <StageLabel label={section.stage} />
@@ -364,19 +441,7 @@ export default function UserGuide() {
       <div className="rounded-2xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
         <h2 className="text-[15px] font-bold mb-4" style={{ color: "var(--text-primary)" }}>各功能入口對照</h2>
         <div className="space-y-2">
-          {[
-            { icon: "💬", action: "用 LINE 傳訊息記帳", where: "LINE App → 加入 Bot 好友", color: "#10B981" },
-            { icon: "📁", action: "上傳銀行 CSV / PDF", where: "工具 → 匯入資料", color: "#3B82F6" },
-            { icon: "✏️", action: "手動新增 / 編輯交易", where: "交易記錄 Tab → ＋ 新增", color: "#8B5CF6" },
-            { icon: "🎯", action: "設定每月分類預算", where: "預算控制 Tab", color: "#EF4444" },
-            { icon: "🏦", action: "管理貸款還款明細", where: "負債管理 Tab", color: "#F59E0B" },
-            { icon: "💳", action: "查看信用卡帳單", where: "負債管理 Tab → 信用卡", color: "#06B6D4" },
-            { icon: "🔁", action: "識別訂閱自動扣款", where: "訂閱偵測 Tab", color: "#10B981" },
-            { icon: "📈", action: "FIRE / 退休 / 年報分析", where: "Header → 進階分析", color: "#8B5CF6" },
-            { icon: "🎓", action: "研究所 / 財務規劃", where: "Header → 財務規劃", color: "#6366F1" },
-            { icon: "🔔", action: "查看所有警示通知", where: "Header 右側鈴鐺", color: "#EF4444" },
-            { icon: "📄", action: "列印正式財務報表", where: "Header → 工具 → 列印月報", color: "#F59E0B" },
-          ].map((row, i) => (
+          {QUICK_REF.map((row, i) => (
             <div key={i} className="flex items-center gap-3 py-2 rounded-lg px-3"
               style={{ background: `${row.color}0a` }}>
               <span className="text-lg w-7 text-center">{row.icon}</span>
