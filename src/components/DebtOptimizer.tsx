@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { DEMO_LOANS_RAW, DEMO_CREDIT_CARDS_RAW } from "@/lib/demo-data";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -172,6 +172,146 @@ function StrategyCard({ label, icon, desc, result, isWinner, savings, color }: S
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Single-loan prepay simulation ─────────────────────────────────────────
+
+function simulateSingleLoan(balance: number, annualRate: number, monthly: number): { months: number; totalInterest: number } {
+  let bal = balance;
+  let totalInterest = 0;
+  let months = 0;
+  const monthlyRate = annualRate / 100 / 12;
+  while (bal > 0.5 && months < 600) {
+    months++;
+    const interest = bal * monthlyRate;
+    totalInterest += interest;
+    bal = Math.max(0, bal + interest - monthly);
+  }
+  return { months, totalInterest };
+}
+
+// ── PrepaySimulator sub-component ─────────────────────────────────────────
+
+function PrepaySimulator({ debts }: { debts: DebtEntry[] }) {
+  const [selectedId, setSelectedId] = useState<string>(debts[0]?.id ?? "");
+  const [extra, setExtra]           = useState(0);
+
+  const debt = debts.find(d => d.id === selectedId) ?? debts[0];
+
+  const base = useMemo(
+    () => debt ? simulateSingleLoan(debt.balance, debt.annualRate, debt.minMonthly) : null,
+    [debt]
+  );
+  const sim = useMemo(
+    () => debt ? simulateSingleLoan(debt.balance, debt.annualRate, debt.minMonthly + extra) : null,
+    [debt, extra]
+  );
+
+  if (!debt || !base || !sim) return null;
+
+  const monthsSaved    = base.months - sim.months;
+  const interestSaved  = base.totalInterest - sim.totalInterest;
+  const maxExtra       = Math.max(Math.ceil(debt.balance * 0.2 / 500) * 500, debt.minMonthly * 3);
+  const step           = debt.balance > 100000 ? 1000 : 500;
+
+  return (
+    <div className="rounded-xl p-4 space-y-4"
+      style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
+      <p className="text-[14px] font-semibold" style={{ color: "var(--text-sub)" }}>💡 提前還款試算</p>
+
+      {/* Debt selector */}
+      {debts.length > 1 && (
+        <div>
+          <label className="text-[13px] mb-1 block" style={{ color: "var(--text-muted)" }}>選擇負債</label>
+          <select value={selectedId} onChange={e => { setSelectedId(e.target.value); setExtra(0); }}
+            className="w-full rounded-lg px-3 py-2 text-[13px] outline-none"
+            style={{ background: "var(--bg-card)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
+            {debts.map(d => (
+              <option key={d.id} value={d.id}
+                style={{ background: "var(--bg-card)", color: "var(--text-primary)" }}>
+                {d.type === "cc" ? "💳" : "🏦"} {d.name}（{d.annualRate}%）
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Slider */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-[13px]" style={{ color: "var(--text-muted)" }}>每月多還</label>
+          <span className="text-[14px] font-bold" style={{ color: "var(--accent)" }}>
+            NT$ {extra.toLocaleString()}
+          </span>
+        </div>
+        <input
+          type="range" min={0} max={maxExtra} step={step} value={extra}
+          onChange={e => setExtra(Number(e.target.value))}
+          className="w-full accent-[var(--accent)]"
+          style={{ accentColor: "var(--accent)" }}
+        />
+        <div className="flex justify-between text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+          <span>NT$ 0</span>
+          <span>NT$ {maxExtra.toLocaleString()}</span>
+        </div>
+      </div>
+
+      {/* Comparison */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl p-3 text-center" style={{ background: "var(--bg-card)", border: "1px solid var(--border-inner)" }}>
+          <p className="text-[11px] mb-1" style={{ color: "var(--text-muted)" }}>目前（最低還款）</p>
+          <p className="text-[18px] font-black tabular-nums" style={{ color: "var(--text-primary)" }}>
+            {fmtMonths(base.months)}
+          </p>
+          <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+            利息 NT$ {fmt(base.totalInterest)}
+          </p>
+        </div>
+        <div className="rounded-xl p-3 text-center"
+          style={{
+            background: extra > 0 ? "#10B98110" : "var(--bg-card)",
+            border: `1px solid ${extra > 0 ? "#10B98140" : "var(--border-inner)"}`,
+          }}>
+          <p className="text-[11px] mb-1" style={{ color: "var(--text-muted)" }}>
+            多還 NT$ {extra.toLocaleString()} / 月
+          </p>
+          <p className="text-[18px] font-black tabular-nums"
+            style={{ color: extra > 0 ? "#10B981" : "var(--text-primary)" }}>
+            {fmtMonths(sim.months)}
+          </p>
+          <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+            利息 NT$ {fmt(sim.totalInterest)}
+          </p>
+        </div>
+      </div>
+
+      {/* Savings badge */}
+      {extra > 0 && monthsSaved > 0 && (
+        <div className="rounded-xl px-4 py-3 flex items-center justify-between"
+          style={{ background: "#10B98115", border: "1px solid #10B98130" }}>
+          <div>
+            <p className="text-[13px] font-bold" style={{ color: "#10B981" }}>
+              🎉 提前 {fmtMonths(monthsSaved)} 還清
+            </p>
+            <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+              每月多還 NT$ {extra.toLocaleString()}，共節省 NT$ {fmt(interestSaved)} 利息
+            </p>
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>CP 值</p>
+            <p className="text-[14px] font-black" style={{ color: "#10B981" }}>
+              {interestSaved > 0 ? `${Math.round(interestSaved / (extra * sim.months) * 100)}%` : "—"}
+            </p>
+          </div>
+        </div>
+      )}
+      {extra > 0 && monthsSaved <= 0 && (
+        <p className="text-[12px] text-center" style={{ color: "var(--text-muted)" }}>
+          此金額對還清時間影響不顯著
+        </p>
+      )}
     </div>
   );
 }
@@ -461,6 +601,9 @@ export default function DebtOptimizer({ isDemo }: { isDemo: boolean }) {
                 <span style={{ color: "#10b981" }}>🏔️ 雪崩法</span>：先還最高利率負債，數學上累計利息最少，適合理性決策者。
               </p>
             </div>
+
+            {/* ── Prepay Simulator ── */}
+            <PrepaySimulator debts={debts} />
           </>
         )}
       </div>
