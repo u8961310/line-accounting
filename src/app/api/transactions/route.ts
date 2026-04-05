@@ -185,7 +185,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as {
-      date: string; type: string; amount: number; category: string; note?: string;
+      date: string; type: string; amount: number; category: string; note?: string; source?: string;
     };
     const user = await prisma.user.findFirst({ where: { lineUserId: "dashboard_user" } });
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
         amount: body.amount,
         category: body.category,
         note: body.note ?? "",
-        source: "manual",
+        source: body.source ?? "manual",
       },
     });
     return NextResponse.json({ id: tx.id });

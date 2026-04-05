@@ -11,13 +11,14 @@ async function getDashboardUser() {
   });
 }
 
-// GET /api/budgets?month=2026-03
+// GET /api/budgets?month=2026-03（省略則預設本月）
 // 回傳所有分類的預算設定 + 該月實際支出
 export async function GET(req: NextRequest) {
-  const month = req.nextUrl.searchParams.get("month");
-  if (!month || !/^\d{4}-\d{2}$/.test(month)) {
-    return NextResponse.json({ error: "請提供 month 參數（格式：YYYY-MM）" }, { status: 400 });
-  }
+  const raw   = req.nextUrl.searchParams.get("month");
+  const now   = new Date();
+  const month = (raw && /^\d{4}-\d{2}$/.test(raw))
+    ? raw
+    : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   const user = await getDashboardUser();
 

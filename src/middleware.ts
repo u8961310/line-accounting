@@ -12,6 +12,12 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return NextResponse.next();
   }
 
+  // Allow internal API key access (for kogao LINE bot)
+  const apiKey = request.headers.get("x-api-key");
+  if (apiKey && process.env.INTERNAL_API_KEY && apiKey === process.env.INTERNAL_API_KEY) {
+    return NextResponse.next();
+  }
+
   // Check session
   const response = NextResponse.next();
   const session = await getIronSession<SessionData>(request, response, SESSION_OPTIONS);
