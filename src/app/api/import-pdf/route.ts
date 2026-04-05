@@ -6,6 +6,8 @@ import { batchCategorize } from "@/lib/csv/categorizer";
 import { logAudit } from "@/lib/audit";
 import pdfParse from "pdf-parse";
 
+export const dynamic = "force-dynamic";
+
 async function getDashboardUser() {
   return prisma.user.upsert({
     where: { lineUserId: "dashboard_user" },
