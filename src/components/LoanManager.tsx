@@ -706,9 +706,22 @@ export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
                               <p className="text-[14px] font-medium text-[var(--text-primary)]">{p.paymentDate.slice(0, 10)}</p>
                               <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>本金 {fmt(p.principalPaid)} · 利息 {fmt(p.interestPaid)}</p>
                             </div>
-                            <div className="text-right">
-                              <p className="text-[14px] font-bold" style={{ color: "var(--accent-light)" }}>NT$ {fmt(p.totalPaid)}</p>
-                              <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>餘 {fmt(p.remainingPrincipal)}</p>
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <p className="text-[14px] font-bold" style={{ color: "var(--accent-light)" }}>NT$ {fmt(p.totalPaid)}</p>
+                                <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>餘 {fmt(p.remainingPrincipal)}</p>
+                              </div>
+                              <button
+                                onClick={async () => {
+                                  if (!confirm("確定刪除這筆還款紀錄？貸款剩餘本金將自動還原。")) return;
+                                  await fetch(`/api/loans/${loan.id}/payments/${p.id}`, { method: "DELETE" });
+                                  setSelectedLoanPayments(prev => prev.filter(x => x.id !== p.id));
+                                  fetchData();
+                                }}
+                                className="text-[12px] px-2 py-1 rounded-lg transition-opacity hover:opacity-80"
+                                style={{ color: "#EF4444", border: "1px solid #EF444440", background: "#EF444410" }}>
+                                刪除
+                              </button>
                             </div>
                           </div>
                         ))}
