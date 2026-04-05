@@ -1,4 +1,5 @@
 import { CsvAdapter, ParsedTransaction } from "../types";
+import { detectCategory } from "../transfer";
 
 /**
  * 台灣銀行 (Taiwan Bank) adapter
@@ -61,7 +62,7 @@ export const tbankAdapter: CsvAdapter = {
           date,
           amount: withdraw,
           type: "支出",
-          category: "其他",
+          category: detectCategory(summary.trim()),
           note: summary.trim(),
           source: "tbank",
         });
@@ -72,7 +73,7 @@ export const tbankAdapter: CsvAdapter = {
           date,
           amount: deposit,
           type: "收入",
-          category: "其他",
+          category: detectCategory(summary.trim()),
           note: summary.trim(),
           source: "tbank",
         });

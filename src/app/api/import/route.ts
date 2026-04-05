@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseCsv, parseXlsFile } from "@/lib/csv";
 import { prisma } from "@/lib/db";
+import { logAudit } from "@/lib/audit";
 
 const XLS_EXTENSIONS = [".xls", ".xlsx"];
 
@@ -38,17 +39,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? await parseXlsFile(buffer, user.id)
       : await parseCsv(buffer, user.id);
 
+    void logAudit({
+      action:  "csv_import",
+      tool:    result.source,
+      params:  { fileName: file.name, isXls },
+      summary: { imported: result.imported, skipped: result.skipped, errors: result.errors.length },
+    });
+
     return NextResponse.json({
       success: true,
       imported: result.imported,
       skipped: result.skipped,
       source: result.source,
       errors: result.errors,
+      transactions: result.transactions,
       message: `成功匯入 ${result.imported} 筆，跳過 ${result.skipped} 筆重複資料`,
     });
   } catch (error) {
     console.error("Import error:", error);
     const message = error instanceof Error ? error.message : "匯入失敗";
+    void logAudit({ action: "csv_import", status: "error", errorMsg: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

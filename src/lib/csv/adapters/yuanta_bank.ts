@@ -1,4 +1,5 @@
 import { CsvAdapter, ParsedTransaction } from "../types";
+import { detectCategory } from "../transfer";
 
 /**
  * 元大銀行存款 (Yuanta Bank) adapter
@@ -56,10 +57,10 @@ export const yuantaBankAdapter: CsvAdapter = {
       const note    = cleanNote(remark, desc);
 
       if (expense > 0) {
-        results.push({ date, amount: expense, type: "支出", category: "其他", note, source: "yuanta_bank" });
+        results.push({ date, amount: expense, type: "支出", category: detectCategory(note), note, source: "yuanta_bank" });
       }
       if (income > 0) {
-        results.push({ date, amount: income, type: "收入", category: "其他", note, source: "yuanta_bank" });
+        results.push({ date, amount: income, type: "收入", category: detectCategory(note), note, source: "yuanta_bank" });
       }
     }
 

@@ -1,4 +1,5 @@
 import { CsvAdapter, ParsedTransaction } from "../types";
+import { detectCategory } from "../transfer";
 
 /**
  * 兆豐國際商業銀行 (Mega Bank) adapter
@@ -31,7 +32,7 @@ function guessCategory(item: string, note: string): string {
   if (text.includes("電信") || text.includes("網路費")) return "帳單";
   if (text.includes("貸款") || text.includes("信貸") || text.includes("繳交信用卡")) return "貸款";
   if (text.includes("娛樂") || text.includes("電影")) return "娛樂";
-  return "其他";
+  return detectCategory(text);
 }
 
 export const megaBankAdapter: CsvAdapter = {
@@ -92,10 +93,11 @@ export const megaBankAdapter: CsvAdapter = {
   getLastBalance(rows: Record<string, string>[]): { amount: number; date: Date } | null {
     for (let i = rows.length - 1; i >= 0; i--) {
       const row = rows[i];
-      const balanceStr = row["帳戶餘額"] ?? "";
-      const dateStr = row["交易時間"] ?? "";
+      const balanceStr = (row["帳戶餘額"] ?? "").trim();
+      const dateStr = (row["交易時間"] ?? "").trim();
+      if (!balanceStr || !dateStr || balanceStr === "-") continue;
       const amount = parseAmount(balanceStr);
-      if (!isNaN(amount) && dateStr.trim()) {
+      if (amount > 0) {
         return { amount, date: parseDate(dateStr) };
       }
     }

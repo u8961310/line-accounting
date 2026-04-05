@@ -14,6 +14,10 @@ export function verifySignature(body: string, signature: string): boolean {
 }
 
 export async function replyMessage(replyToken: string, text: string): Promise<void> {
+  await replyRawMessage(replyToken, [{ type: "text", text }]);
+}
+
+export async function replyRawMessage(replyToken: string, messages: Record<string, unknown>[]): Promise<void> {
   const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 
   const response = await fetch("https://api.line.me/v2/bot/message/reply", {
@@ -22,20 +26,12 @@ export async function replyMessage(replyToken: string, text: string): Promise<vo
       "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({
-      replyToken,
-      messages: [
-        {
-          type: "text",
-          text,
-        },
-      ],
-    }),
+    body: JSON.stringify({ replyToken, messages }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error("LINE replyMessage error:", response.status, errorText);
+    console.error("LINE replyRawMessage error:", response.status, errorText);
   }
 }
 

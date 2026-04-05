@@ -169,6 +169,8 @@ export default function LearningPlanAdvisor({ isDemo }: { isDemo: boolean }) {
 
   // 每月可動用（收入 - 固定 - 貸款 - 預算）
   const monthlyAvailable = avgMonthlyIncome - totalFixedExpenses - totalLoanMonthly - totalBudget;
+  // 月可存（收入 - 固定支出 - 貸款 - 預算）
+  const monthlyCanSave = avgMonthlyIncome - totalFixedExpenses - totalLoanMonthly - totalBudget;
 
   // ── 教育學程 ──
   const nextEdu = edu ? getNextEduPayment(edu) : null;
@@ -192,6 +194,29 @@ export default function LearningPlanAdvisor({ isDemo }: { isDemo: boolean }) {
   const gradGap = Math.max(0, gradTotalTarget - sharedSavings);
   const gradMonthlyNeed = gradMonthsLeft > 0 ? gradGap / gradMonthsLeft : 0;
   // 就學期間沒有薪資收入（只有公費零用金，已算入 monthlyStipend）
+
+  // ── 教育學程剩餘總額 ──
+  const eduTotalRemaining = (() => {
+    if (!edu) return 0;
+    const startYear  = edu.startYear  ?? new Date().getFullYear();
+    const startMonth = edu.startMonth ?? 8;
+    const total      = edu.totalPayments ?? 4;
+    const paid       = edu.paidCount     ?? 0;
+    const cursor = new Date(startYear, startMonth - 1, 1);
+    let sum = 0;
+    for (let i = 0; i < total; i++) {
+      const month = cursor.getMonth() + 1;
+      if (i >= paid) sum += month === 8 ? (edu.augustAmount ?? 45000) : (edu.februaryAmount ?? 45000);
+      cursor.setMonth(cursor.getMonth() + 6);
+    }
+    return sum;
+  })();
+
+  // ── 合計目標 ──
+  const combinedTarget = eduTotalRemaining + gradTotalTarget;
+  const combinedGap    = Math.max(0, combinedTarget - sharedSavings);
+  const monthsToFull   = monthlyCanSave > 0 && combinedGap > 0
+    ? Math.ceil(combinedGap / monthlyCanSave) : null;
 
   // ── 建議配置 ──
   const remainingAfterEdu = monthlyAvailable - eduMonthlyReserve;
@@ -252,6 +277,79 @@ export default function LearningPlanAdvisor({ isDemo }: { isDemo: boolean }) {
         </p>
       </div>
 
+      {/* ── 總儲蓄目標 Hero ── */}
+      <div className="rounded-2xl p-5 relative overflow-hidden"
+        style={{ background: "var(--bg-card)", border: `1px solid ${combinedGap === 0 ? "rgba(16,185,129,0.3)" : "rgba(99,102,241,0.3)"}`, boxShadow: "0 0 28px rgba(99,102,241,0.08)" }}>
+        <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl"
+          style={{ background: combinedGap === 0 ? "linear-gradient(90deg,#10B981,#34D399)" : "linear-gradient(90deg,#6366F1,#8B5CF6)" }} />
+
+        <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>
+          我總共要存多少錢？
+        </p>
+
+        {/* 拆解明細 */}
+        <div className="space-y-2 mb-4">
+          {edu && (
+            <div className="flex items-center justify-between text-[14px]">
+              <span style={{ color: "var(--text-muted)" }}>
+                📚 教育學程（剩餘 {(edu.totalPayments ?? 4) - (edu.paidCount ?? 0)} 筆）
+              </span>
+              <span className="font-bold tabular-nums" style={{ color: "#F59E0B" }}>NT$ {fmt(eduTotalRemaining)}</span>
+            </div>
+          )}
+          {grad && (
+            <div className="flex items-center justify-between text-[14px]">
+              <span style={{ color: "var(--text-muted)" }}>🎓 研究所規劃</span>
+              <span className="font-bold tabular-nums" style={{ color: "#818CF8" }}>NT$ {fmt(gradTotalTarget)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between text-[14px] pt-2"
+            style={{ borderTop: "1px solid var(--border-inner)" }}>
+            <span className="font-semibold" style={{ color: "var(--text-primary)" }}>合計需存</span>
+            <span className="font-black text-[18px] tabular-nums" style={{ color: "var(--text-primary)" }}>NT$ {fmt(combinedTarget)}</span>
+          </div>
+          <div className="flex items-center justify-between text-[13px]">
+            <span style={{ color: "var(--text-muted)" }}>已存（共用帳戶）</span>
+            <span className="font-semibold tabular-nums" style={{ color: "#34D399" }}>− NT$ {fmt(sharedSavings)}</span>
+          </div>
+          <div className="flex items-center justify-between text-[15px] pt-2"
+            style={{ borderTop: "1px solid var(--border-inner)" }}>
+            <span className="font-bold" style={{ color: "var(--text-primary)" }}>實際缺口</span>
+            <span className="font-black tabular-nums" style={{ color: combinedGap === 0 ? "#10B981" : "#F87171" }}>
+              {combinedGap === 0 ? "✅ 已足夠" : `NT$ ${fmt(combinedGap)}`}
+            </span>
+          </div>
+        </div>
+
+        {/* 每月可存 & 預計時程 */}
+        <div className="rounded-xl p-4 mt-1"
+          style={{ background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.18)" }}>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
+                每月可存（收入 {fmt(avgMonthlyIncome)} − 固定 {fmt(totalFixedExpenses)} − 貸款 {fmt(totalLoanMonthly)} − 預算 {fmt(totalBudget)}）
+              </p>
+              <p className="text-[26px] font-black tabular-nums mt-0.5" style={{ color: "#818CF8" }}>
+                NT$ {fmt(monthlyCanSave)}
+                <span className="text-[13px] font-normal ml-1" style={{ color: "var(--text-muted)" }}>/月</span>
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>預計存滿缺口</p>
+              <p className="text-[20px] font-black tabular-nums mt-0.5"
+                style={{ color: combinedGap === 0 ? "#10B981" : monthsToFull && monthsToFull <= gradMonthsLeft ? "#34D399" : "#F59E0B" }}>
+                {combinedGap === 0 ? "已完成" : monthsToFull ? `${monthsToFull} 個月` : "—"}
+              </p>
+              {monthsToFull && combinedGap > 0 && (
+                <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                  {monthsToFull <= gradMonthsLeft ? `入學前 ${gradMonthsLeft - monthsToFull} 個月達標` : `超出入學時間 ${monthsToFull - gradMonthsLeft} 個月`}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* ── 關鍵差異說明 ── */}
       <div className="rounded-2xl p-5 space-y-3"
         style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
@@ -261,7 +359,7 @@ export default function LearningPlanAdvisor({ isDemo }: { isDemo: boolean }) {
             {
               icon: "📚", title: "教育學程", color: "#F59E0B",
               points: [
-                `每半年繳費一次（8月 / 2月），每次約 NT$ ${fmt((edu?.augustAmount ?? 45000 + (edu?.februaryAmount ?? 45000)) / 2)}`,
+                `每半年繳費一次（8月 / 2月），每次約 NT$ ${fmt(((edu?.augustAmount ?? 45000) + (edu?.februaryAmount ?? 45000)) / 2)}`,
                 "就學期間仍有薪資收入",
                 "繳費後可從薪資補回存款",
                 "緊急優先：下次繳費期限固定",

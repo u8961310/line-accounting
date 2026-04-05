@@ -10,15 +10,18 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:push": "prisma db push"
+    "db:push": "prisma db push",
+    "mcp": "tsx src/mcp/server.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.3",
     "@line/bot-sdk": "^9.4.0",
+    "@modelcontextprotocol/sdk": "^1.28.0",
     "@notionhq/client": "^2.2.15",
     "@prisma/client": "^5.22.0",
     "chardet": "^2.0.0",
     "iconv-lite": "^0.6.3",
+    "iron-session": "^8.0.4",
     "next": "14.2.18",
     "papaparse": "^5.4.1",
     "pdf-parse": "^1.1.1",
@@ -38,6 +41,7 @@
     "postcss": "^8.4.49",
     "prisma": "^5.22.0",
     "tailwindcss": "^3.4.16",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.2"
   }
 }

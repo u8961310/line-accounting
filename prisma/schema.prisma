@@ -8,23 +8,45 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(cuid())
-  lineUserId   String        @unique
-  displayName  String
-  createdAt    DateTime      @default(now())
-  transactions Transaction[]
-  bankBalances BankBalance[]
-  loans        Loan[]
-  creditCards  CreditCard[]
+  id             String         @id @default(cuid())
+  lineUserId     String         @unique
+  displayName    String
+  createdAt      DateTime       @default(now())
+  transactions   Transaction[]
+  bankBalances   BankBalance[]
+  loans          Loan[]
+  creditCards    CreditCard[]
+  budgets              Budget[]
+  fixedExpenses        FixedExpense[]
+  netWorthSnapshots    NetWorthSnapshot[]
+  financialGoals       FinancialGoal[]
+  subscriptionMarks    SubscriptionMark[]
+  healthScoreSnapshots HealthScoreSnapshot[]
+  userCategories       UserCategory[]
+}
+
+model Budget {
+  id        String   @id @default(cuid())
+  userId    String
+  category  String   // 飲食 / 交通 / 娛樂 / 購物 / 醫療 / 其他
+  amount    Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category])
 }
 
 model BankBalance {
-  id        String   @id @default(cuid())
-  userId    String
-  source    String
-  balance   Decimal  @db.Decimal(12, 2)
-  asOfDate  DateTime
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  userId      String
+  source      String
+  balance     Decimal  @db.Decimal(12, 2)
+  asOfDate    DateTime
+  updatedAt   DateTime @updatedAt
+  alias       String?           // 自訂別名，如「緊急備用金」「旅遊基金」
+  savingsGoal Decimal? @db.Decimal(12, 2)  // 儲蓄目標金額
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -40,6 +62,8 @@ model Transaction {
   type         String   // 收入 | 支出
   note         String   @default("")
   source       String   // line | tbank | cathay_bank | esun_bank | ctbc_bank | cathay_cc | esun_cc | ctbc_cc | taishin_cc
+  incomeSource String?  // salary / freelance / bonus / transfer（僅 type=收入 時使用）
+  mood         String?  // 必要 | 衝動 | 計畫
   notionPageId String?
   createdAt    DateTime @default(now())
 
@@ -92,9 +116,10 @@ model CreditCard {
   creditLimit    Decimal?         @db.Decimal(12, 2)
   statementDay   Int?
   dueDay         Int?
-  currentBalance Decimal          @default(0) @db.Decimal(12, 2)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  currentBalance         Decimal  @default(0) @db.Decimal(12, 2)
+  installmentOutstanding Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   bills CreditCardBill[]
@@ -113,4 +138,119 @@ model CreditCardBill {
   createdAt      DateTime  @default(now())
 
   creditCard CreditCard @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+}
+
+model FixedExpense {
+  id         String   @id @default(cuid())
+  userId     String
+  name       String            // 名稱，如「房租」「Netflix」
+  amount     Decimal  @db.Decimal(12, 2)
+  category   String   @default("居住")
+  dayOfMonth Int?              // 每月幾號扣款（選填，1-31）
+  note       String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PayeeMapping {
+  id        String   @id @default(cuid())
+  pattern   String   @unique  // 比對 note 的子字串，如 "807-001360"
+  label     String            // 顯示名稱，如 "房租"
+  category  String   @default("")  // 選填：覆蓋分類
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FinancialGoal {
+  id            String    @id @default(cuid())
+  userId        String
+  name          String
+  targetAmount  Decimal   @db.Decimal(12, 2)
+  savedAmount   Decimal   @default(0) @db.Decimal(12, 2)
+  linkedSource  String?   // 連結帳戶 source（如 "esun_bank"），連結後已存金額自動同步
+  deadline      DateTime?
+  emoji         String    @default("🎯")
+  note          String    @default("")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model NetWorthSnapshot {
+  id        String   @id @default(cuid())
+  userId    String
+  month     String   // "2026-04"
+  netWorth  Decimal  @db.Decimal(12, 2)
+  assets    Decimal  @db.Decimal(12, 2)
+  debt      Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, month])
+  @@index([userId])
+}
+
+model HealthScoreSnapshot {
+  id              String   @id @default(cuid())
+  userId          String
+  month           String   // "2026-04"
+  score           Int
+  savingsScore    Int
+  debtScore       Int
+  budgetScore     Int
+  savingsRate     Float
+  debtRatio       Float
+  budgetAdherence Float
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, month])
+  @@index([userId])
+}
+
+model UserCategory {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  type      String   @default("both") // "expense" | "income" | "both"
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+}
+
+model SubscriptionMark {
+  id         String   @id @default(cuid())
+  userId     String
+  patternKey String   // "note||amount" fingerprint
+  label      String   @default("")    // custom display name
+  note       String   @default("")    // user's remark
+  confirmed  Boolean  @default(false)
+  dismissed  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, patternKey])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  action    String   // mcp_call | csv_import | pdf_import
+  tool      String?  // MCP 工具名稱；匯入時為 source 代碼
+  params    Json?    // 輸入參數（已過濾敏感資訊）
+  summary   Json?    // 結果摘要（匯入筆數等）
+  status    String   @default("success")  // success | error
+  errorMsg  String?
+
+  @@index([createdAt])
+  @@index([action])
 }

@@ -1,4 +1,5 @@
 import { CsvAdapter, ParsedTransaction } from "../types";
+import { detectCategory } from "../transfer";
 
 /**
  * 國泰世華銀行存款 (Cathay United Bank - Deposit) adapter
@@ -52,7 +53,7 @@ export const cathayBankAdapter: CsvAdapter = {
         date,
         amount,
         type,
-        category: "其他",
+        category: detectCategory(description.trim()),
         note: description.trim(),
         source: "cathay_bank",
       });

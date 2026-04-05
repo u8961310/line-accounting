@@ -22,24 +22,36 @@ export async function PATCH(
     if (paidAmount >= totalAmount) status = "paid";
     else if (paidAmount > 0) status = "partial";
 
-    const newBalance = totalAmount - paidAmount;
+    // 更新帳單後，依最新一筆帳單的截止日重算 currentBalance
+    const updatedBill = await prisma.creditCardBill.update({
+      where: { id: params.billId },
+      data: {
+        paidAmount,
+        paidDate: body.paidDate !== undefined
+          ? (body.paidDate ? new Date(body.paidDate) : null)
+          : bill.paidDate,
+        status,
+      },
+    });
 
-    const [updatedBill] = await prisma.$transaction([
-      prisma.creditCardBill.update({
-        where: { id: params.billId },
-        data: {
-          paidAmount,
-          paidDate: body.paidDate !== undefined
-            ? (body.paidDate ? new Date(body.paidDate) : null)
-            : bill.paidDate,
-          status,
-        },
+    const [latestBill, card] = await Promise.all([
+      prisma.creditCardBill.findFirst({
+        where: { creditCardId: params.id },
+        orderBy: { dueDate: "desc" },
+        select: { totalAmount: true, paidAmount: true },
       }),
-      prisma.creditCard.update({
+      prisma.creditCard.findUnique({
         where: { id: params.id },
-        data: { currentBalance: newBalance },
+        select: { installmentOutstanding: true },
       }),
     ]);
+    if (latestBill) {
+      const installment = parseFloat((card?.installmentOutstanding ?? 0).toString());
+      await prisma.creditCard.update({
+        where: { id: params.id },
+        data: { currentBalance: parseFloat(latestBill.totalAmount.toString()) - parseFloat(latestBill.paidAmount.toString()) + installment },
+      });
+    }
 
     return NextResponse.json(updatedBill);
   } catch (e) {

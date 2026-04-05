@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { syncWorthToNotion } from "@/lib/notion";
+import { logAudit } from "@/lib/audit";
 
 export async function POST(): Promise<NextResponse> {
-  if (!process.env.NOTION_TOKEN || !process.env.NOTION_TRANSACTIONS_DB_ID) {
-    return NextResponse.json({ error: "未設定 NOTION_TOKEN 或 NOTION_TRANSACTIONS_DB_ID" }, { status: 400 });
+  if (!process.env.NOTION_TOKEN || !process.env.NOTION_NET_WORTH_DB_ID) {
+    return NextResponse.json({ error: "未設定 NOTION_TOKEN 或 NOTION_NET_WORTH_DB_ID" }, { status: 400 });
   }
 
   try {
@@ -41,11 +42,23 @@ export async function POST(): Promise<NextResponse> {
     await syncWorthToNotion({ totalAssets, totalDebt, netWorth: savings });
 
     const savingsLabel = savingsEntry ? `${savingsSource} 餘額` : "淨資產";
+    void logAudit({
+      action:  "notion_sync",
+      tool:    "worth_snapshot",
+      summary: {
+        totalAssets:  Math.round(totalAssets),
+        totalDebt:    Math.round(totalDebt),
+        savings:      Math.round(savings),
+        savingsLabel,
+      },
+    });
+
     return NextResponse.json({
       message: `已同步：資產 ${Math.round(totalAssets).toLocaleString()} ／ 負債 ${Math.round(totalDebt).toLocaleString()} ／ 儲蓄金(${savingsLabel}) ${Math.round(savings).toLocaleString()}`,
     });
   } catch (e) {
     console.error(e);
+    void logAudit({ action: "notion_sync", status: "error", errorMsg: e instanceof Error ? e.message : "同步失敗" });
     return NextResponse.json({ error: "同步失敗" }, { status: 500 });
   }
 }

@@ -1,4 +1,5 @@
 import { CsvAdapter, ParsedTransaction } from "../types";
+import { detectCategory } from "../transfer";
 
 /**
  * 玉山銀行存款 adapter
@@ -56,10 +57,10 @@ export const esunBankAdapter: CsvAdapter = {
       const income  = parseAmount(incomeStr);
 
       if (expense > 0) {
-        results.push({ date, amount: expense, type: "支出", category: "其他", note, source: "esun_bank" });
+        results.push({ date, amount: expense, type: "支出", category: detectCategory(note), note, source: "esun_bank" });
       }
       if (income > 0) {
-        results.push({ date, amount: income,  type: "收入", category: "其他", note, source: "esun_bank" });
+        results.push({ date, amount: income,  type: "收入", category: detectCategory(note), note, source: "esun_bank" });
       }
     }
 

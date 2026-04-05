@@ -36,26 +36,40 @@ export async function POST(
     if (paidAmount >= body.totalAmount) status = "paid";
     else if (paidAmount > 0) status = "partial";
 
-    const newBalance = body.totalAmount - paidAmount;
+    const newDueDate = new Date(body.dueDate);
 
-    const [bill] = await prisma.$transaction([
-      prisma.creditCardBill.create({
-        data: {
-          creditCardId: params.id,
-          billingMonth: body.billingMonth,
-          totalAmount: body.totalAmount,
-          minimumPayment: body.minimumPayment ?? null,
-          dueDate: new Date(body.dueDate),
-          paidAmount: paidAmount,
-          paidDate: body.paidDate ? new Date(body.paidDate) : null,
-          status,
-        },
+    // 建立帳單後，依最新一筆帳單的截止日重算 currentBalance
+    const bill = await prisma.creditCardBill.create({
+      data: {
+        creditCardId: params.id,
+        billingMonth: body.billingMonth,
+        totalAmount: body.totalAmount,
+        minimumPayment: body.minimumPayment ?? null,
+        dueDate: newDueDate,
+        paidAmount: paidAmount,
+        paidDate: body.paidDate ? new Date(body.paidDate) : null,
+        status,
+      },
+    });
+
+    const [latestBill, card] = await Promise.all([
+      prisma.creditCardBill.findFirst({
+        where: { creditCardId: params.id },
+        orderBy: { dueDate: "desc" },
+        select: { totalAmount: true, paidAmount: true },
       }),
-      prisma.creditCard.update({
+      prisma.creditCard.findUnique({
         where: { id: params.id },
-        data: { currentBalance: newBalance },
+        select: { installmentOutstanding: true },
       }),
     ]);
+    if (latestBill) {
+      const installment = parseFloat((card?.installmentOutstanding ?? 0).toString());
+      await prisma.creditCard.update({
+        where: { id: params.id },
+        data: { currentBalance: parseFloat(latestBill.totalAmount.toString()) - parseFloat(latestBill.paidAmount.toString()) + installment },
+      });
+    }
 
     return NextResponse.json(bill, { status: 201 });
   } catch (e) {

@@ -21,6 +21,7 @@ interface RecentTransaction {
   type: string;
   note: string;
   source: string;
+  mood: string | null;
 }
 
 interface SummaryResponse {
@@ -38,19 +39,28 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(request.url);
   const months = parseInt(searchParams.get("months") ?? "6", 10);
   const userId = searchParams.get("userId");
+  const monthParam = searchParams.get("month"); // YYYY-MM — 單月篩選
 
   // Calculate date range
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setMonth(startDate.getMonth() - months);
-  startDate.setDate(1);
-  startDate.setHours(0, 0, 0, 0);
+  let startDate: Date;
+  let endDate: Date;
+
+  if (monthParam) {
+    const [y, m] = monthParam.split("-").map(Number);
+    startDate = new Date(y, m - 1, 1);
+    endDate   = new Date(y, m, 1); // 下個月初（exclusive）
+  } else {
+    endDate   = new Date();
+    startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - months);
+    startDate.setDate(1);
+    startDate.setHours(0, 0, 0, 0);
+  }
 
   const whereClause = {
-    date: {
-      gte: startDate,
-      lte: endDate,
-    },
+    date: monthParam
+      ? { gte: startDate, lt: endDate }
+      : { gte: startDate, lte: endDate },
     ...(userId ? { user: { lineUserId: userId } } : {}),
   };
 
@@ -58,12 +68,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const transactions = await prisma.transaction.findMany({
     where: whereClause,
     orderBy: { date: "desc" },
+    select: { id: true, date: true, amount: true, category: true, type: true, note: true, source: true, incomeSource: true, mood: true },
   });
 
   // Build monthly summary
   const monthlyMap = new Map<string, { income: number; expense: number }>();
 
   for (const tx of transactions) {
+    if (tx.category === "轉帳") continue; // 轉帳不計入收支趨勢
     const month = tx.date.toISOString().slice(0, 7); // YYYY-MM
     const existing = monthlyMap.get(month) ?? { income: 0, expense: 0 };
     const amount = parseFloat(tx.amount.toString());
@@ -89,6 +101,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const categoryMap = new Map<string, { income: number; expense: number }>();
 
   for (const tx of transactions) {
+    if (tx.category === "轉帳") continue; // 轉帳不列入收支分類
     const key = tx.category;
     const existing = categoryMap.get(key) ?? { income: 0, expense: 0 };
     const amount = parseFloat(tx.amount.toString());
@@ -103,7 +116,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const byCategory: CategorySummary[] = [];
-  for (const [category, data] of categoryMap.entries()) {
+  for (const [category, data] of Array.from(categoryMap.entries())) {
     if (data.income > 0) {
       byCategory.push({ category, type: "收入", total: Math.round(data.income * 100) / 100 });
     }
@@ -123,14 +136,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     type: tx.type,
     note: tx.note,
     source: tx.source,
+    mood: tx.mood ?? null,
   }));
 
-  // Totals — current month only
+  // Totals — 指定月份 or 本月
   const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const currentMonth = monthParam ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   const thisMonthTxs = transactions.filter(
-    (tx) => tx.date.toISOString().slice(0, 7) === currentMonth,
+    (tx) => tx.date.toISOString().slice(0, 7) === currentMonth && tx.category !== "轉帳",
   );
 
   const totalIncome = thisMonthTxs

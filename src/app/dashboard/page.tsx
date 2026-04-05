@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useState, useCallback, useRef } from "react";
 import {
   DEMO_SUMMARY, DEMO_BALANCES, DEMO_NET_WORTH, DEMO_BUDGETS,
   DEMO_TX_PAGE, DEMO_CATEGORIES, DEMO_FIXED_EXPENSES, DEMO_LOANS,
@@ -23,12 +23,12 @@ import { RetirementCalc, FireCalc, IncomeStability, ExpenseRatio, AccountFlow, S
 import NotificationPanel from "@/components/NotificationPanel";
 import SubscriptionDetector from "@/components/SubscriptionDetector";
 import BillCalendar from "@/components/BillCalendar";
-import SavingsChallenge from "@/components/SavingsChallenge";
 import GradSchoolPlanner from "@/components/GradSchoolPlanner";
-import EmergencyFundPlanner from "@/components/EmergencyFundPlanner";
 import EducationProgramPlanner from "@/components/EducationProgramPlanner";
-import LearningPlanAdvisor from "@/components/LearningPlanAdvisor";
+import SavingsPlan from "@/components/SavingsPlan";
 import CategoryManager from "@/components/CategoryManager";
+import UserGuide from "@/components/UserGuide";
+import DuplicateReview from "@/components/DuplicateReview";
 import { THEMES, themeToCSS, type AppTheme } from "@/lib/themes";
 import type { TransferPair } from "@/app/api/transfer-candidates/route";
 import type { DuplicatePair } from "@/app/api/duplicate-candidates/route";
@@ -50,8 +50,8 @@ interface NetWorth {
   totalDebt: number; netWorth: number; monthlyInterest: number; totalInterestPaid: number;
 }
 type TabId = "charts" | "transactions" | "loans" | "budget" | "subscriptions" | "annual"
-  | "retirement" | "fire" | "income-stability" | "expense-ratio" | "account-flow" | "spending-forecast" | "cashflow-forecast" | "bill-calendar" | "savings-challenge" | "grad-school" | "emergency-fund" | "education-program" | "learning-plan"
-  | "payees" | "import" | "guide" | "audit" | "categories";
+  | "retirement" | "fire" | "income-stability" | "expense-ratio" | "account-flow" | "spending-forecast" | "cashflow-forecast" | "bill-calendar" | "grad-school" | "savings-plan" | "education-program"
+  | "payees" | "import" | "guide" | "audit" | "categories" | "duplicate-review";
 interface MonthDetail {
   byCategory: CategorySummary[];
   totals: { income: number; expense: number; net: number };
@@ -93,19 +93,20 @@ const CC_SOURCES   = new Set(["cathay_cc", "esun_cc", "ctbc_cc", "taishin_cc", "
 const BANK_SOURCES = new Set(["esun_bank", "ctbc_bank", "mega_bank", "yuanta_bank", "sinopac_bank", "kgi_bank"]);
 
 const TABS: { id: TabId; label: string }[] = [
-  { id: "charts",        label: "圖表分析" },
+  { id: "charts",        label: "圖表" },
   { id: "transactions",  label: "交易記錄" },
-  { id: "loans",         label: "負債管理" },
-  { id: "budget",        label: "預算控制" },
-  { id: "subscriptions", label: "訂閱偵測" },
+  { id: "loans",         label: "負債" },
+  { id: "budget",        label: "預算" },
+  { id: "subscriptions", label: "訂閱" },
 ];
 
 const TOOLS_TABS: { id: TabId; label: string }[] = [
-  { id: "payees",     label: "帳號對照" },
-  { id: "categories", label: "自訂分類" },
-  { id: "import",     label: "匯入資料" },
-  { id: "audit",      label: "稽核記錄" },
-  { id: "guide",      label: "使用說明" },
+  { id: "payees",           label: "帳號對照" },
+  { id: "categories",       label: "自訂分類" },
+  { id: "import",           label: "匯入資料" },
+  { id: "duplicate-review", label: "重複審核" },
+  { id: "audit",            label: "稽核記錄" },
+  { id: "guide",            label: "使用說明" },
 ];
 
 // 進階分析子選單（資料分析 / 報表向）
@@ -120,15 +121,245 @@ const ANALYSIS_TABS: { id: TabId; label: string; icon: string }[] = [
 
 // 財務規劃子選單（目標 / 計畫向）
 const PLANNING_TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: "emergency-fund",    label: "緊急預備金",  icon: "🛡️" },
-  { id: "learning-plan",     label: "學習規劃建議", icon: "🧭" },
+  { id: "savings-plan",      label: "儲蓄規劃",    icon: "💰" },
   { id: "grad-school",       label: "研究所規劃",  icon: "🎓" },
   { id: "education-program", label: "教育學程",    icon: "📚" },
   { id: "retirement",        label: "退休金試算",  icon: "🏖️" },
   { id: "fire",              label: "FIRE 試算",   icon: "🔥" },
   { id: "bill-calendar",     label: "帳單日曆",    icon: "📅" },
-  { id: "savings-challenge", label: "存錢挑戰",    icon: "🏆" },
 ];
+
+// ── Note Templates ────────────────────────────────────────────────────────────
+const NOTE_TEMPLATE_KEY = "note_templates_v1";
+const DEFAULT_NOTE_TEMPLATES = ["午餐", "晚餐", "早餐", "咖啡", "加油", "超市", "便利商店", "計程車", "捷運", "藥局"];
+
+function getNoteTemplates(): string[] {
+  if (typeof window === "undefined") return DEFAULT_NOTE_TEMPLATES;
+  const stored = localStorage.getItem(NOTE_TEMPLATE_KEY);
+  return stored ? (JSON.parse(stored) as string[]) : DEFAULT_NOTE_TEMPLATES;
+}
+
+function addNoteTemplate(note: string) {
+  if (!note.trim() || note.trim().length > 20) return;
+  const templates = getNoteTemplates();
+  if (templates.includes(note.trim())) return;
+  const updated = [note.trim(), ...templates].slice(0, 20);
+  localStorage.setItem(NOTE_TEMPLATE_KEY, JSON.stringify(updated));
+}
+
+function NoteTemplatePicker({ onSelect }: { onSelect: (note: string) => void }) {
+  const [templates, setTemplates] = React.useState<string[]>(DEFAULT_NOTE_TEMPLATES);
+  React.useEffect(() => { setTemplates(getNoteTemplates()); }, []);
+
+  const remove = (t: string) => {
+    const updated = templates.filter(x => x !== t);
+    setTemplates(updated);
+    localStorage.setItem(NOTE_TEMPLATE_KEY, JSON.stringify(updated));
+  };
+
+  return (
+    <div className="flex flex-wrap gap-1 mb-2">
+      {templates.slice(0, 12).map(t => (
+        <div key={t} className="flex items-center text-[12px] rounded-md group overflow-hidden"
+          style={{ border: "1px solid var(--border-inner)" }}>
+          <button onClick={() => onSelect(t)} className="px-2 py-0.5 transition-colors hover:opacity-80"
+            style={{ background: "var(--bg-input)", color: "var(--text-sub)" }}>{t}</button>
+          <button onClick={() => remove(t)}
+            className="px-1 py-0.5 opacity-0 group-hover:opacity-60 transition-opacity leading-none"
+            style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>×</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Split part type ───────────────────────────────────────────────────────────
+interface SplitPart { category: string; amount: string; note: string }
+interface SplitTx { id: string; date: string; amount: number; type: string; category: string; note: string }
+
+// ── Chart card visibility ─────────────────────────────────────────────────────
+const CHART_CARDS_DEFAULT = [
+  { id: "savings-summary", label: "儲蓄規劃摘要" },
+  { id: "month-compare",   label: "當月 vs 上月" },
+  { id: "net-worth",       label: "淨資產總覽"   },
+  { id: "health-score",    label: "財務健康評分" },
+  { id: "trend",           label: "趨勢追蹤"     },
+  { id: "goals",           label: "財務目標"     },
+  { id: "distribution",   label: "收支分佈"     },
+  { id: "fixed-loans",    label: "固定支出與貸款" },
+];
+type ChartCardId = (typeof CHART_CARDS_DEFAULT)[number]["id"];
+const CHART_VIS_KEY   = "chart_cards_v1";
+const CHART_ORDER_KEY = "chart_cards_order_v1";
+
+function getHiddenCards(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try { return new Set(JSON.parse(localStorage.getItem(CHART_VIS_KEY) ?? "[]") as string[]); } catch { return new Set(); }
+}
+function getCardOrder(): ChartCardId[] {
+  if (typeof window === "undefined") return CHART_CARDS_DEFAULT.map(c => c.id as ChartCardId);
+  try {
+    const stored = JSON.parse(localStorage.getItem(CHART_ORDER_KEY) ?? "null") as ChartCardId[] | null;
+    if (!stored) return CHART_CARDS_DEFAULT.map(c => c.id as ChartCardId);
+    // 補上新加的卡片（未存在 order 裡的）
+    const extra = CHART_CARDS_DEFAULT.map(c => c.id as ChartCardId).filter(id => !stored.includes(id));
+    return [...stored, ...extra];
+  } catch { return CHART_CARDS_DEFAULT.map(c => c.id as ChartCardId); }
+}
+
+function ChartCardSettings({ hidden, order, onToggle, onReorder, onClose }: {
+  hidden:    Set<string>;
+  order:     ChartCardId[];
+  onToggle:  (id: ChartCardId) => void;
+  onReorder: (next: ChartCardId[]) => void;
+  onClose:   () => void;
+}) {
+  const [dragIdx, setDragIdx] = React.useState<number | null>(null);
+  const [overIdx, setOverIdx] = React.useState<number | null>(null);
+
+  const ordered = order.map(id => CHART_CARDS_DEFAULT.find(c => c.id === id)!).filter(Boolean);
+
+  const handleDrop = (toIdx: number) => {
+    if (dragIdx === null || dragIdx === toIdx) { setDragIdx(null); setOverIdx(null); return; }
+    const next = [...order];
+    const [moved] = next.splice(dragIdx, 1);
+    next.splice(toIdx, 0, moved);
+    onReorder(next);
+    setDragIdx(null); setOverIdx(null);
+  };
+
+  return (
+    <div className="rounded-2xl p-4 space-y-3"
+      style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
+      <div className="flex items-center justify-between">
+        <p className="text-[14px] font-bold" style={{ color: "var(--text-primary)" }}>自訂首頁顯示</p>
+        <button onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded text-[18px] leading-none hover:opacity-70"
+          style={{ color: "var(--text-muted)" }}>×</button>
+      </div>
+      <div className="space-y-1.5">
+        {ordered.map((c, idx) => {
+          const visible = !hidden.has(c.id);
+          const isDragging = dragIdx === idx;
+          const isOver     = overIdx === idx && dragIdx !== idx;
+          return (
+            <div key={c.id}
+              draggable
+              onDragStart={() => setDragIdx(idx)}
+              onDragOver={e => { e.preventDefault(); setOverIdx(idx); }}
+              onDragLeave={() => setOverIdx(null)}
+              onDrop={() => handleDrop(idx)}
+              onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-[13px] font-medium transition-all select-none"
+              style={{
+                background:  isOver ? "rgba(59,130,246,0.18)" : visible ? "rgba(59,130,246,0.08)" : "var(--bg-input)",
+                border:      `1px solid ${isOver ? "rgba(59,130,246,0.6)" : visible ? "rgba(59,130,246,0.3)" : "var(--border-inner)"}`,
+                opacity:     isDragging ? 0.4 : 1,
+                cursor:      "grab",
+                transform:   isOver ? "scale(1.02)" : "scale(1)",
+              }}>
+              <span className="text-[16px] select-none" style={{ color: "var(--text-muted)", cursor: "grab" }}>⠿</span>
+              <span className="flex-1" style={{ color: visible ? "#60A5FA" : "var(--text-muted)" }}>{c.label}</span>
+              <button onClick={() => onToggle(c.id as ChartCardId)}
+                className="w-5 h-5 flex items-center justify-center rounded text-[13px] leading-none flex-shrink-0 transition-opacity hover:opacity-70"
+                style={{ color: visible ? "#60A5FA" : "var(--text-muted)" }}>
+                {visible ? "☑" : "☐"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>拖曳 ⠿ 調整順序，點 ☑ 切換顯示，設定自動儲存</p>
+    </div>
+  );
+}
+
+function AnimatedScore({ target, color }: { target: number; color: string }) {
+  const [displayed, setDisplayed] = React.useState(0);
+  const rafRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    const duration = 900;
+    const start = performance.now();
+    const animate = (now: number) => {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      // easeOut cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplayed(Math.round(eased * target));
+      if (progress < 1) rafRef.current = requestAnimationFrame(animate);
+    };
+    rafRef.current = requestAnimationFrame(animate);
+    return () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current); };
+  }, [target]);
+  return (
+    <p className="text-[44px] font-black leading-none tabular-nums" style={{ color }}>{displayed}</p>
+  );
+}
+
+function AnimatedBar({ pct, color }: { pct: number; color: string }) {
+  const [width, setWidth] = React.useState(0);
+  React.useEffect(() => {
+    const t = setTimeout(() => setWidth(pct), 50);
+    return () => clearTimeout(t);
+  }, [pct]);
+  return <div className="h-full rounded-full transition-all duration-700" style={{ width: `${width}%`, background: color }} />;
+}
+
+function JsonRestorePanel({ onComplete }: { onComplete: () => void }) {
+  const [jsonFile,    setJsonFile]    = React.useState<File | null>(null);
+  const [jsonMsg,     setJsonMsg]     = React.useState<string | null>(null);
+  const [jsonLoading, setJsonLoading] = React.useState(false);
+
+  const restoreJson = async () => {
+    if (!jsonFile) return;
+    setJsonLoading(true); setJsonMsg(null);
+    try {
+      const text = await jsonFile.text();
+      const rows = JSON.parse(text) as unknown[];
+      if (!Array.isArray(rows)) throw new Error("格式錯誤：必須是 JSON 陣列");
+      const res = await fetch("/api/import-json", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ rows }),
+      });
+      const d = await res.json() as { ok?: boolean; imported?: number; skipped?: number; error?: string };
+      if (d.error) throw new Error(d.error);
+      setJsonMsg(`✅ 還原完成：匯入 ${d.imported} 筆，跳過 ${d.skipped} 筆（重複或格式錯誤）`);
+      setJsonFile(null);
+      onComplete();
+    } catch (e) {
+      setJsonMsg(`❌ ${e instanceof Error ? e.message : "還原失敗"}`);
+    } finally { setJsonLoading(false); }
+  };
+
+  return (
+    <div className="rounded-2xl p-5 space-y-3" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+      <div>
+        <p className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>從備份 JSON 還原</p>
+        <p className="text-[13px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+          選取先前從交易記錄頁「↓ 備份」下載的 JSON 檔，重複資料會自動跳過
+        </p>
+      </div>
+      <div className="flex items-center gap-3">
+        <label className="flex-1 cursor-pointer">
+          <div className="rounded-xl px-4 py-2.5 text-[14px] text-center transition-opacity hover:opacity-80"
+            style={{ background: "var(--bg-input)", border: "1px dashed var(--border-inner)", color: jsonFile ? "var(--text-primary)" : "var(--text-muted)" }}>
+            {jsonFile ? jsonFile.name : "選擇 .json 備份檔…"}
+          </div>
+          <input type="file" accept=".json" className="hidden"
+            onChange={e => { setJsonFile(e.target.files?.[0] ?? null); setJsonMsg(null); }} />
+        </label>
+        <button onClick={restoreJson} disabled={!jsonFile || jsonLoading}
+          className="px-4 py-2.5 rounded-xl text-[14px] font-bold text-white transition-opacity disabled:opacity-40"
+          style={{ background: "var(--btn-gradient)" }}>
+          {jsonLoading ? "還原中…" : "開始還原"}
+        </button>
+      </div>
+      {jsonMsg && (
+        <p className="text-[13px] font-medium" style={{ color: jsonMsg.startsWith("✅") ? "#10B981" : "#EF4444" }}>{jsonMsg}</p>
+      )}
+    </div>
+  );
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmt(n: number) {
@@ -261,6 +492,8 @@ interface TxPage {
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const isDemo = useRef(typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1");
+  // Tab 快取：記錄已成功載入過資料的 Tab，切回時不重新 fetch
+  const loadedTabs = useRef<Set<TabId>>(new Set());
 
   const [data,       setData]       = useState<SummaryData | null>(null);
   const [balances,   setBalances]   = useState<BankBalanceItem[]>([]);
@@ -277,6 +510,7 @@ export default function DashboardPage() {
   const [txData,     setTxData]     = useState<TxPage | null>(null);
   const [txPage,     setTxPage]     = useState(1);
   const [txLoading,  setTxLoading]  = useState(false);
+  const txSentinelRef = useRef<HTMLDivElement>(null);
   const [editingTxId,  setEditingTxId]  = useState<string | null>(null);
   const [txFilterCat,    setTxFilterCat]    = useState<string | null>(null);
   const [txSearch,       setTxSearch]       = useState("");
@@ -291,6 +525,7 @@ export default function DashboardPage() {
   const [batchMode,      setBatchMode]      = useState(false);
   const [selectedIds,    setSelectedIds]    = useState<Set<string>>(new Set());
   const [batchCat,       setBatchCat]       = useState("");
+  const [batchNote,      setBatchNote]      = useState("");
   const [batchUpdating,  setBatchUpdating]  = useState(false);
   const [categories,      setCategories]      = useState<string[]>([]);
   const [customExpenseCats, setCustomExpenseCats] = useState<string[]>([]);
@@ -304,6 +539,38 @@ export default function DashboardPage() {
   const [notionMsg,     setNotionMsg]     = useState<string | null>(null);
   const [addForm,      setAddForm]      = useState({ date: new Date().toISOString().split("T")[0], type: "收入", amount: "", category: "", note: "" });
   const [addSaving,    setAddSaving]    = useState(false);
+  const [splitModal,   setSplitModal]   = useState<SplitTx | null>(null);
+  const [splitParts,   setSplitParts]   = useState<SplitPart[]>([{ category: "", amount: "", note: "" }, { category: "", amount: "", note: "" }]);
+  const [splitSaving,  setSplitSaving]  = useState(false);
+  const [mergeModal,   setMergeModal]   = useState(false);
+  const [mergeForm,    setMergeForm]    = useState({ category: "", note: "" });
+  const [mergeSaving,  setMergeSaving]  = useState(false);
+  const [prevMonthSummary, setPrevMonthSummary] = useState<{ totals: { income: number; expense: number; net: number }; byCategory: CategorySummary[] } | null>(null);
+  const [monthCompareExpanded, setMonthCompareExpanded] = useState(false);
+  const [globalSearch,     setGlobalSearch]     = useState("");
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const globalSearchRef = React.useRef<HTMLInputElement>(null);
+  const [hiddenCards,      setHiddenCards]      = useState<Set<string>>(() =>
+    typeof window !== "undefined" ? getHiddenCards() : new Set()
+  );
+  const [cardOrder,        setCardOrder]        = useState<ChartCardId[]>(() =>
+    typeof window !== "undefined" ? getCardOrder() : CHART_CARDS_DEFAULT.map(c => c.id as ChartCardId)
+  );
+  const [showCardSettings, setShowCardSettings] = useState(false);
+  const showCard  = (id: string) => !hiddenCards.has(id);
+  const toggleCard = (id: ChartCardId) => {
+    setHiddenCards(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      localStorage.setItem(CHART_VIS_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  };
+  const reorderCards = (next: ChartCardId[]) => {
+    setCardOrder(next);
+    localStorage.setItem(CHART_ORDER_KEY, JSON.stringify(next));
+  };
+  const [urgentBillCount, setUrgentBillCount] = useState(0);
   const [transferPairs, setTransferPairs] = useState<TransferPair[]>([]);
   const [dismissedPairs, setDismissedPairs] = useState<Set<string>>(new Set());
   const [duplicatePairs,         setDuplicatePairs]         = useState<DuplicatePair[]>([]);
@@ -370,11 +637,29 @@ export default function DashboardPage() {
       setNetWorth(await nw.json() as NetWorth);
       const bgData = await bg.json() as { budgets: { category: string; amount: number; spent: number }[] };
       setBudgetOverview(bgData.budgets ?? []);
+      // 上月資料（月份對比卡用）
+      const prevDate = new Date(); prevDate.setMonth(prevDate.getMonth() - 1);
+      const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+      fetch(`/api/summary?month=${prevMonth}`).then(r => r.json()).then(d => setPrevMonthSummary(d as typeof prevMonthSummary)).catch(() => {});
+      // 信用卡帳單 — 計算 7 天內到期未繳筆數（負債 Tab badge 用）
+      fetch("/api/credit-cards").then(r => r.json()).then((cards: { bills: { dueDate: string; status: string }[] }[]) => {
+        const in7days = new Date(); in7days.setDate(in7days.getDate() + 7);
+        const today   = new Date(); today.setHours(0, 0, 0, 0);
+        let count = 0;
+        for (const card of cards) {
+          for (const bill of card.bills ?? []) {
+            if (bill.status === "paid") continue;
+            const due = new Date(bill.dueDate);
+            if (due >= today && due <= in7days) count++;
+          }
+        }
+        setUrgentBillCount(count);
+      }).catch(() => {});
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [months, currentMonth]);
 
-  const fetchTxPage = useCallback(async (_page: number) => {
+  const fetchTxPage = useCallback(async (_page: number, append = false) => {
     setTxLoading(true);
     try {
       if (isDemo.current) { setTxData(DEMO_TX_PAGE); return; }
@@ -387,7 +672,12 @@ export default function DashboardPage() {
       if (txAmountMin)  p.set("amountMin", txAmountMin);
       if (txAmountMax)  p.set("amountMax", txAmountMax);
       const res = await fetch(`/api/transactions?${p.toString()}`);
-      setTxData(await res.json() as TxPage);
+      const d = await res.json() as TxPage;
+      if (append) {
+        setTxData(prev => prev ? { ...d, items: [...prev.items, ...d.items] } : d);
+      } else {
+        setTxData(d);
+      }
     } catch (e) { console.error(e); }
     finally { setTxLoading(false); }
   }, [txFilterCat, txSearch, txTypeFilter, txDateFrom, txDateTo, txAmountMin, txAmountMax]);
@@ -423,26 +713,84 @@ export default function DashboardPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // 動態 title — 顯示當前月份
   useEffect(() => {
-    if (activeTab === "charts") fetchData();
+    document.title = `LINE 記帳 | ${currentMonth}`;
+    return () => { document.title = "LINE 記帳"; };
+  }, [currentMonth]);
+
+  // Tab 記憶 — paint 前同步讀取，避免閃爍；useLayoutEffect 不在 server 執行，hydration 不會失配
+  useLayoutEffect(() => {
+    const VALID_TABS = new Set<string>(["charts","transactions","loans","budget","subscriptions","annual","retirement","fire","income-stability","expense-ratio","account-flow","spending-forecast","cashflow-forecast","bill-calendar","grad-school","savings-plan","education-program","payees","import","guide","audit","categories","duplicate-review"]);
+    const saved = localStorage.getItem("activeTab") as TabId | null;
+    if (saved && VALID_TABS.has(saved)) setActiveTab(saved);
+  }, []);
+
+  // Tab 記憶 — 持久化 activeTab
+  useEffect(() => {
+    localStorage.setItem("activeTab", activeTab);
+  }, [activeTab]);
+
+  // ── 鍵盤快捷鍵 ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // 如果焦點在 input/textarea/select 上，不攔截
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      // Esc：關閉 modal
+      if (e.key === "Escape") {
+        setAddModal(false);
+        setSplitModal(null);
+        setMergeModal(false);
+        setGoalModal(null);
+        setGlobalSearchOpen(false);
+        return;
+      }
+      // /：開啟全域搜尋
+      if (e.key === "/" && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setGlobalSearchOpen(true);
+        return;
+      }
+      // N：新增記帳
+      if (e.key === "n" || e.key === "N") {
+        setAddModal(true);
+        return;
+      }
+      // 1-5：切換主 Tab
+      if (e.key === "1") { setActiveTab("charts");       return; }
+      if (e.key === "2") { setActiveTab("transactions");  return; }
+      if (e.key === "3") { setActiveTab("loans");         return; }
+      if (e.key === "4") { setActiveTab("budget");        return; }
+      if (e.key === "5") { setActiveTab("subscriptions"); return; }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== "charts") return;
+    if (loadedTabs.current.has("charts")) return;
+    loadedTabs.current.add("charts");
+    fetchData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   useEffect(() => {
-    if (activeTab === "transactions") { setTxPage(1); fetchTxPage(1); }
+    if (activeTab === "transactions") { setTxData(null); setTxPage(1); fetchTxPage(1); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [txFilterCat]);
 
   useEffect(() => {
     if (activeTab !== "transactions") return;
-    const t = setTimeout(() => { setTxPage(1); fetchTxPage(1); }, 400);
+    const t = setTimeout(() => { setTxData(null); setTxPage(1); fetchTxPage(1); }, 400);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [txSearch]);
 
   useEffect(() => {
     if (activeTab !== "transactions") return;
-    const t = setTimeout(() => { setTxPage(1); fetchTxPage(1); }, 400);
+    const t = setTimeout(() => { setTxData(null); setTxPage(1); fetchTxPage(1); }, 400);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [txTypeFilter, txDateFrom, txDateTo, txAmountMin, txAmountMax]);
@@ -475,8 +823,13 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "transactions") {
-      fetchTxPage(txPage);
+    if (activeTab !== "transactions") return;
+    // txPage 變動（換頁）永遠 fetch；初次進 Tab 也 fetch
+    const firstVisit = !loadedTabs.current.has("transactions");
+    if (!firstVisit && txPage === 1) return; // 切回 Tab 且在第一頁，跳過重 fetch
+    if (firstVisit) loadedTabs.current.add("transactions");
+    fetchTxPage(txPage, txPage > 1);
+    if (firstVisit) {
       if (isDemo.current) { setTransferPairs(DEMO_TRANSFER_CANDIDATES.pairs); return; }
       fetch(`/api/transfer-candidates?lineUserId=${lineUserId}`)
         .then(r => r.json())
@@ -485,8 +838,26 @@ export default function DashboardPage() {
     }
   }, [activeTab, txPage, fetchTxPage]);
 
+  // Infinite scroll sentinel observer
+  useEffect(() => {
+    const sentinel = txSentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !txLoading && txData && txData.page < txData.totalPages) {
+          setTxPage(p => p + 1);
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [txLoading, txData]);
+
   useEffect(() => {
     if (activeTab !== "import") return;
+    if (loadedTabs.current.has("import")) return;
+    loadedTabs.current.add("import");
     if (isDemo.current) { setDuplicatePairs(DEMO_DUPLICATE_CANDIDATES.pairs as DuplicatePair[]); return; }
     fetch("/api/duplicate-candidates")
       .then(r => r.json())
@@ -496,6 +867,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (activeTab !== "audit") return;
+    // 換頁 or 篩選變動時一律 fetch；初次進 Tab 也 fetch
+    const firstVisit = !loadedTabs.current.has("audit");
+    if (firstVisit) loadedTabs.current.add("audit");
     fetchAuditLogs(auditPage, auditFilter);
 
     const es = new EventSource("/api/audit-logs/stream");
@@ -507,6 +881,7 @@ export default function DashboardPage() {
   // 衝動消費趨勢：抓近 6 個月支出交易（含 mood），按月分組
   useEffect(() => {
     if (activeTab !== "charts") return;
+    if (moodTrend.length > 0) return; // 已有資料則跳過
     const now = new Date();
     const dateFrom = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().split("T")[0];
     fetch(`/api/transactions?type=支出&dateFrom=${dateFrom}&limit=500`)
@@ -541,6 +916,7 @@ export default function DashboardPage() {
   // 高頻商家分析：抓近期支出交易（含 note）
   useEffect(() => {
     if (activeTab !== "charts") return;
+    if (merchantTxs.length > 0) return; // 已有資料則跳過
     fetch("/api/transactions?type=支出&limit=500")
       .then(r => r.json())
       .then((d: { items: { note: string | null; amount: number; category: string }[] }) => {
@@ -556,6 +932,7 @@ export default function DashboardPage() {
   // 同月去年比較：自動抓當月 vs 去年同月
   useEffect(() => {
     if (activeTab !== "charts") return;
+    if (yoyData) return; // 已有資料則跳過
     const base = selectedMonth ?? currentMonth;
     const [y, m] = base.split("-").map(Number);
     const prevYear = `${y - 1}-${String(m).padStart(2, "0")}`;
@@ -804,6 +1181,7 @@ export default function DashboardPage() {
         body: JSON.stringify({ date: addForm.date, type: addForm.type, amount, category: addForm.category.trim(), note: addForm.note }),
       });
       setAddModal(false);
+      if (addForm.note.trim()) addNoteTemplate(addForm.note.trim());
       setAddForm({ date: new Date().toISOString().split("T")[0], type: "收入", amount: "", category: "", note: "" });
       setCategories(prev => prev.includes(addForm.category.trim()) ? prev : [...prev, addForm.category.trim()].sort());
       // refresh tx list if on transactions tab
@@ -811,6 +1189,46 @@ export default function DashboardPage() {
       fetchData();
     } catch (e) { console.error(e); }
     setAddSaving(false);
+  }
+
+  async function saveSplit() {
+    if (!splitModal) return;
+    const parts = splitParts.filter(p => p.category && parseFloat(p.amount) > 0);
+    if (parts.length < 2) return;
+    const sum = parts.reduce((s, p) => s + parseFloat(p.amount), 0);
+    if (Math.abs(sum - splitModal.amount) > 0.5) return;
+    setSplitSaving(true);
+    try {
+      await fetch(`/api/transactions/${splitModal.id}/split`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parts: parts.map(p => ({ category: p.category, amount: parseFloat(p.amount), note: p.note })) }),
+      });
+      setSplitModal(null);
+      setSplitParts([{ category: "", amount: "", note: "" }, { category: "", amount: "", note: "" }]);
+      fetchTxPage(txPage);
+      fetchData();
+    } catch (e) { console.error(e); }
+    setSplitSaving(false);
+  }
+
+  async function saveMerge() {
+    if (!mergeForm.category || selectedIds.size < 2) return;
+    setMergeSaving(true);
+    try {
+      await fetch("/api/transactions/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedIds), category: mergeForm.category, note: mergeForm.note }),
+      });
+      setMergeModal(false);
+      setMergeForm({ category: "", note: "" });
+      setBatchMode(false);
+      setSelectedIds(new Set());
+      fetchTxPage(1);
+      fetchData();
+    } catch (e) { console.error(e); }
+    setMergeSaving(false);
   }
 
   async function updateTxCategory(id: string, category: string, type: string) {
@@ -856,6 +1274,29 @@ export default function DashboardPage() {
     setBatchCat("");
     setBatchUpdating(false);
     fetchData();
+  }
+
+  async function batchUpdateNote(note: string) {
+    if (!note.trim() || selectedIds.size === 0) return;
+    setBatchUpdating(true);
+    const ids = Array.from(selectedIds);
+    for (const id of ids) {
+      try {
+        await fetch(`/api/transactions/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ note: note.trim() }),
+        });
+      } catch (e) { console.error(e); }
+    }
+    setTxData(prev => prev ? {
+      ...prev,
+      items: prev.items.map(tx => selectedIds.has(tx.id) ? { ...tx, note: note.trim() } : tx),
+    } : prev);
+    setSelectedIds(new Set());
+    setBatchMode(false);
+    setBatchNote("");
+    setBatchUpdating(false);
   }
 
   async function updateTxMood(id: string, mood: string | null) {
@@ -933,46 +1374,249 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Header ── */}
+      {/* ── Header (單行) ── */}
       <header className="sticky top-0 z-20 border-b" style={{ background: "var(--bg-card)", borderColor: "var(--border)", boxShadow: "var(--card-shadow)" }}>
+        <div className="max-w-6xl mx-auto px-6 h-[52px] flex items-stretch gap-2">
 
-        {/* Top row */}
-        <div className="max-w-6xl mx-auto px-8 h-[68px] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "var(--btn-gradient)", boxShadow: "0 0 16px rgba(59,130,246,0.4)" }}>
-              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          {/* Logo */}
+          <div className="flex items-center gap-2 flex-shrink-0 pr-1">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "var(--btn-gradient)", boxShadow: "0 0 12px rgba(59,130,246,0.35)" }}>
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <div>
-              <p className="text-[21px] font-extrabold tracking-tight" style={{ color: "var(--text-primary)" }}>個人記帳系統</p>
-              <p className="text-[14px] font-semibold tracking-[0.18em] uppercase" style={{ color: "var(--accent)" }}>Personal Finance Dashboard</p>
+            <span className="text-[15px] font-extrabold tracking-tight whitespace-nowrap" style={{ color: "var(--text-primary)" }}>個人記帳</span>
+          </div>
+
+          {/* 分隔線 */}
+          <div className="self-center w-px h-5 flex-shrink-0" style={{ background: "var(--border-inner)" }} />
+
+          {/* Tab nav — 主 Tab 可橫向捲動，下拉選單在外側避免被裁切 */}
+          <div className="flex items-stretch flex-1 min-w-0">
+            {/* 主 Tab（可捲動） */}
+            <div className="flex items-stretch overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+              {TABS.map(tab => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                  className="relative px-3 text-[13px] font-semibold tracking-wide transition-colors duration-200 whitespace-nowrap flex items-center gap-1"
+                  style={{ color: activeTab === tab.id ? "var(--accent-light)" : "var(--text-sub)" }}>
+                  {tab.label}
+                  {tab.id === "loans" && urgentBillCount > 0 && (
+                    <span className="min-w-[16px] h-4 rounded-full flex items-center justify-center text-[11px] font-black text-white px-1 flex-shrink-0"
+                      style={{ background: "#EF4444", boxShadow: "0 0 6px rgba(239,68,68,0.5)" }}>
+                      {urgentBillCount > 9 ? "9+" : urgentBillCount}
+                    </span>
+                  )}
+                  {activeTab === tab.id && (
+                    <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full" style={{ background: "linear-gradient(90deg, #1D4ED8, #60A5FA)" }} />
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* 下拉選單群（不在 overflow 容器內，避免被裁切） */}
+            <div className="flex items-stretch flex-shrink-0">
+
+              {/* ── 進階分析 下拉 ── */}
+              {(() => {
+                const isActive = ANALYSIS_TABS.some(t => t.id === activeTab);
+                return (
+                  <div className="relative flex items-stretch">
+                    <button
+                      onClick={() => { setAnalysisOpen(o => !o); setPlanningOpen(false); setToolsOpen(false); }}
+                      className="relative px-3 text-[13px] font-semibold tracking-wide transition-colors duration-200 flex items-center gap-1 whitespace-nowrap"
+                      style={{ color: isActive ? "var(--accent-light)" : "var(--text-sub)" }}>
+                      分析
+                      <svg className="w-3 h-3 transition-transform" style={{ opacity: 0.6, transform: analysisOpen ? "rotate(180deg)" : "rotate(0deg)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                      {isActive && (
+                        <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full"
+                          style={{ background: "linear-gradient(90deg, #1D4ED8, #60A5FA)" }} />
+                      )}
+                    </button>
+                    {analysisOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setAnalysisOpen(false)} />
+                        <div className="absolute top-full left-0 z-20 rounded-xl overflow-hidden min-w-[160px]"
+                          style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,0.5)" }}>
+                          {ANALYSIS_TABS.map(t => (
+                            <button key={t.id}
+                              onClick={() => { setActiveTab(t.id); setAnalysisOpen(false); }}
+                              className="w-full text-left px-4 py-2.5 text-[14px] font-medium flex items-center gap-2 transition-colors"
+                              style={{
+                                color:      activeTab === t.id ? "var(--accent-light)" : "var(--text-primary)",
+                                background: activeTab === t.id ? "var(--bg-input)"     : "transparent",
+                              }}>
+                              <span className="text-base">{t.icon}</span>
+                              {t.label}
+                              {activeTab === t.id && <span className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--accent-light)" }} />}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* ── 財務規劃 下拉 ── */}
+              {(() => {
+                const isActive = PLANNING_TABS.some(t => t.id === activeTab);
+                return (
+                  <div className="relative flex items-stretch">
+                    <button
+                      onClick={() => { setPlanningOpen(o => !o); setAnalysisOpen(false); setToolsOpen(false); }}
+                      className="relative px-3 text-[13px] font-semibold tracking-wide transition-colors duration-200 flex items-center gap-1 whitespace-nowrap"
+                      style={{ color: isActive ? "var(--accent-light)" : "var(--text-sub)" }}>
+                      規劃
+                      <svg className="w-3 h-3 transition-transform" style={{ opacity: 0.6, transform: planningOpen ? "rotate(180deg)" : "rotate(0deg)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                      {isActive && (
+                        <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full"
+                          style={{ background: "linear-gradient(90deg, #1D4ED8, #60A5FA)" }} />
+                      )}
+                    </button>
+                    {planningOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setPlanningOpen(false)} />
+                        <div className="absolute top-full left-0 z-20 rounded-xl overflow-hidden min-w-[160px]"
+                          style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,0.5)" }}>
+                          {PLANNING_TABS.map(t => (
+                            <button key={t.id}
+                              onClick={() => { setActiveTab(t.id); setPlanningOpen(false); }}
+                              className="w-full text-left px-4 py-2.5 text-[14px] font-medium flex items-center gap-2 transition-colors"
+                              style={{
+                                color:      activeTab === t.id ? "var(--accent-light)" : "var(--text-primary)",
+                                background: activeTab === t.id ? "var(--bg-input)"     : "transparent",
+                              }}>
+                              <span className="text-base">{t.icon}</span>
+                              {t.label}
+                              {activeTab === t.id && <span className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--accent-light)" }} />}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* ── 工具 下拉 ── */}
+              {(() => {
+                const isActive = TOOLS_TABS.some(t => t.id === activeTab);
+                return (
+                  <div className="relative flex items-stretch">
+                    <button
+                      onClick={() => { setToolsOpen(o => !o); setAnalysisOpen(false); setPlanningOpen(false); }}
+                      className="relative px-3 text-[13px] font-semibold tracking-wide transition-colors duration-200 flex items-center gap-1 whitespace-nowrap"
+                      style={{ color: isActive ? "var(--accent-light)" : "var(--text-sub)" }}>
+                      工具
+                      <svg className="w-3 h-3 transition-transform" style={{ opacity: 0.6, transform: toolsOpen ? "rotate(180deg)" : "rotate(0deg)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                      {isActive && (
+                        <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full"
+                          style={{ background: "linear-gradient(90deg, #1D4ED8, #60A5FA)" }} />
+                      )}
+                    </button>
+                    {toolsOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setToolsOpen(false)} />
+                        <div className="absolute top-full left-0 z-20 rounded-xl overflow-hidden min-w-[128px]"
+                          style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,0.5)" }}>
+                          {TOOLS_TABS.map(t => (
+                            <button key={t.id}
+                              onClick={() => { setActiveTab(t.id); setToolsOpen(false); }}
+                              className="w-full text-left px-4 py-2.5 text-[14px] font-medium flex items-center gap-2 transition-colors"
+                              style={{
+                                color:      activeTab === t.id ? "var(--accent-light)" : "var(--text-primary)",
+                                background: activeTab === t.id ? "var(--bg-input)"     : "transparent",
+                              }}>
+                              {t.label}
+                              {activeTab === t.id && <span className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--accent-light)" }} />}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          {/* 分隔線 */}
+          <div className="self-center w-px h-5 flex-shrink-0" style={{ background: "var(--border-inner)" }} />
+
+          {/* Controls */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             {/* 月份範圍 */}
             <select value={months} onChange={e => setMonths(+e.target.value)}
-              className="text-[14px] font-medium rounded-xl px-3 py-2 outline-none cursor-pointer"
+              className="text-[13px] font-medium rounded-lg px-2 py-1.5 outline-none cursor-pointer"
               style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-sub)" }}>
-              <option value={3}>近 3 個月</option>
-              <option value={6}>近 6 個月</option>
-              <option value={12}>近 12 個月</option>
+              <option value={3}>近 3 月</option>
+              <option value={6}>近 6 月</option>
+              <option value={12}>近 12 月</option>
             </select>
+
+            {/* 全域搜尋 */}
+            {globalSearchOpen ? (
+              <div className="relative">
+                <input
+                  ref={globalSearchRef}
+                  autoFocus
+                  type="text"
+                  placeholder="搜尋備註…（Enter）"
+                  value={globalSearch}
+                  onChange={e => setGlobalSearch(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && globalSearch.trim()) {
+                      setTxSearch(globalSearch.trim());
+                      setActiveTab("transactions");
+                      setGlobalSearchOpen(false);
+                      setGlobalSearch("");
+                    }
+                    if (e.key === "Escape") { setGlobalSearchOpen(false); setGlobalSearch(""); }
+                  }}
+                  className="rounded-lg pl-8 pr-3 py-1.5 text-[13px] outline-none w-44"
+                  style={{ background: "var(--bg-input)", border: "1px solid var(--accent)", color: "var(--text-primary)" }}
+                />
+                <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: "var(--text-muted)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                </svg>
+              </div>
+            ) : (
+              <button onClick={() => setGlobalSearchOpen(true)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
+                style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-sub)" }}
+                title="搜尋交易（/）">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                </svg>
+              </button>
+            )}
 
             {/* 通知 */}
             <NotificationPanel isDemo={isDemo.current} />
 
             {/* 重新整理 */}
-            <button onClick={fetchData}
-              className="text-[14px] font-semibold text-white px-4 py-2 rounded-xl transition-opacity hover:opacity-90"
-              style={{ background: "var(--btn-gradient)", boxShadow: "0 0 12px rgba(59,130,246,0.3)" }}>
-              重新整理
+            <button onClick={() => {
+              loadedTabs.current.clear();
+              setMoodTrend([]);
+              setMerchantTxs([]);
+              setYoyData(null);
+              fetchData();
+            }}
+              className="text-[13px] font-semibold text-white px-3 py-1.5 rounded-lg transition-opacity hover:opacity-90"
+              style={{ background: "var(--btn-gradient)", boxShadow: "0 0 10px rgba(59,130,246,0.3)" }}>
+              重整
             </button>
 
             {/* ⋯ 更多選單 */}
             <div className="relative">
               <button onClick={() => setMoreOpen(o => !o)}
-                className="w-9 h-9 flex items-center justify-center rounded-xl text-[18px] font-bold transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-[16px] font-bold transition-colors"
                 style={{
                   background: moreOpen ? "var(--bg-input)" : "transparent",
                   border:     `1px solid ${moreOpen ? "var(--border)" : "transparent"}`,
@@ -1040,148 +1684,6 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-
-        {/* Tab nav */}
-        <div className="max-w-6xl mx-auto px-8 flex items-stretch" style={{ borderTop: "1px solid var(--border-inner)" }}>
-          {TABS.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className="relative px-5 py-4 text-[14px] font-semibold tracking-wide transition-colors duration-200 whitespace-nowrap"
-              style={{ color: activeTab === tab.id ? "var(--accent-light)" : "var(--text-sub)" }}>
-              {tab.label}
-              {activeTab === tab.id && (
-                <span className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full" style={{ background: "linear-gradient(90deg, #1D4ED8, #60A5FA)" }} />
-              )}
-            </button>
-          ))}
-
-          {/* ── 進階分析 下拉 ── */}
-          {(() => {
-            const isActive = ANALYSIS_TABS.some(t => t.id === activeTab);
-            return (
-              <div className="relative">
-                <button
-                  onClick={() => { setAnalysisOpen(o => !o); setPlanningOpen(false); setToolsOpen(false); }}
-                  className="relative px-5 py-4 text-[14px] font-semibold tracking-wide transition-colors duration-200 flex items-center gap-1 whitespace-nowrap"
-                  style={{ color: isActive ? "var(--accent-light)" : "var(--text-sub)" }}>
-                  進階分析
-                  <svg className="w-3 h-3 transition-transform" style={{ opacity: 0.6, transform: analysisOpen ? "rotate(180deg)" : "rotate(0deg)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                  {isActive && (
-                    <span className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
-                      style={{ background: "linear-gradient(90deg, #1D4ED8, #60A5FA)" }} />
-                  )}
-                </button>
-                {analysisOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setAnalysisOpen(false)} />
-                    <div className="absolute top-full left-0 z-20 rounded-xl overflow-hidden min-w-[160px]"
-                      style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,0.5)" }}>
-                      {ANALYSIS_TABS.map(t => (
-                        <button key={t.id}
-                          onClick={() => { setActiveTab(t.id); setAnalysisOpen(false); }}
-                          className="w-full text-left px-4 py-2.5 text-[14px] font-medium flex items-center gap-2 transition-colors"
-                          style={{
-                            color:      activeTab === t.id ? "var(--accent-light)" : "var(--text-primary)",
-                            background: activeTab === t.id ? "var(--bg-input)"     : "transparent",
-                          }}>
-                          <span className="text-base">{t.icon}</span>
-                          {t.label}
-                          {activeTab === t.id && <span className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--accent-light)" }} />}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* ── 財務規劃 下拉 ── */}
-          {(() => {
-            const isActive = PLANNING_TABS.some(t => t.id === activeTab);
-            return (
-              <div className="relative">
-                <button
-                  onClick={() => { setPlanningOpen(o => !o); setAnalysisOpen(false); setToolsOpen(false); }}
-                  className="relative px-5 py-4 text-[14px] font-semibold tracking-wide transition-colors duration-200 flex items-center gap-1 whitespace-nowrap"
-                  style={{ color: isActive ? "var(--accent-light)" : "var(--text-sub)" }}>
-                  財務規劃
-                  <svg className="w-3 h-3 transition-transform" style={{ opacity: 0.6, transform: planningOpen ? "rotate(180deg)" : "rotate(0deg)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                  {isActive && (
-                    <span className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
-                      style={{ background: "linear-gradient(90deg, #1D4ED8, #60A5FA)" }} />
-                  )}
-                </button>
-                {planningOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setPlanningOpen(false)} />
-                    <div className="absolute top-full left-0 z-20 rounded-xl overflow-hidden min-w-[160px]"
-                      style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,0.5)" }}>
-                      {PLANNING_TABS.map(t => (
-                        <button key={t.id}
-                          onClick={() => { setActiveTab(t.id); setPlanningOpen(false); }}
-                          className="w-full text-left px-4 py-2.5 text-[14px] font-medium flex items-center gap-2 transition-colors"
-                          style={{
-                            color:      activeTab === t.id ? "var(--accent-light)" : "var(--text-primary)",
-                            background: activeTab === t.id ? "var(--bg-input)"     : "transparent",
-                          }}>
-                          <span className="text-base">{t.icon}</span>
-                          {t.label}
-                          {activeTab === t.id && <span className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--accent-light)" }} />}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* ── 工具 下拉 ── */}
-          {(() => {
-            const isActive = TOOLS_TABS.some(t => t.id === activeTab);
-            return (
-              <div className="relative">
-                <button
-                  onClick={() => { setToolsOpen(o => !o); setAnalysisOpen(false); setPlanningOpen(false); }}
-                  className="relative px-5 py-4 text-[14px] font-semibold tracking-wide transition-colors duration-200 flex items-center gap-1 whitespace-nowrap"
-                  style={{ color: isActive ? "var(--accent-light)" : "var(--text-sub)" }}>
-                  工具
-                  <svg className="w-3 h-3 transition-transform" style={{ opacity: 0.6, transform: toolsOpen ? "rotate(180deg)" : "rotate(0deg)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                  {isActive && (
-                    <span className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
-                      style={{ background: "linear-gradient(90deg, #1D4ED8, #60A5FA)" }} />
-                  )}
-                </button>
-                {toolsOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setToolsOpen(false)} />
-                    <div className="absolute top-full left-0 z-20 rounded-xl overflow-hidden min-w-[128px]"
-                      style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,0.5)" }}>
-                      {TOOLS_TABS.map(t => (
-                        <button key={t.id}
-                          onClick={() => { setActiveTab(t.id); setToolsOpen(false); }}
-                          className="w-full text-left px-4 py-2.5 text-[14px] font-medium flex items-center gap-2 transition-colors"
-                          style={{
-                            color:      activeTab === t.id ? "var(--accent-light)" : "var(--text-primary)",
-                            background: activeTab === t.id ? "var(--bg-input)"     : "transparent",
-                          }}>
-                          {t.label}
-                          {activeTab === t.id && <span className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--accent-light)" }} />}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })()}
-        </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-8 py-7 space-y-6 pb-12">
@@ -1239,7 +1741,25 @@ export default function DashboardPage() {
 
         {/* ── Charts tab ── */}
         {!loading && activeTab === "charts" && (
-          <div className="space-y-5">
+          <div className="flex flex-col gap-5">
+
+            {/* ── 自訂卡片按鈕 ── */}
+            <div className="flex justify-end">
+              <button onClick={() => setShowCardSettings(s => !s)}
+                className="text-[13px] font-semibold px-3 py-1.5 rounded-xl transition-opacity hover:opacity-80"
+                style={{ background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border-inner)" }}>
+                ⚙ 自訂卡片
+              </button>
+            </div>
+            {showCardSettings && (
+              <ChartCardSettings
+                hidden={hiddenCards}
+                order={cardOrder}
+                onToggle={toggleCard}
+                onReorder={reorderCards}
+                onClose={() => setShowCardSettings(false)}
+              />
+            )}
 
             {/* ── 預算超標警示 Banner ── */}
             {budgetOverview.length > 0 && (() => {
@@ -1286,229 +1806,154 @@ export default function DashboardPage() {
               );
             })()}
 
-            {/* ── 研究所規劃進度卡（優先項目）── */}
-            {(() => {
-              let plan: { linkedGoalId?: string | null; targetAmount?: number; tuition?: number; living?: number; duration?: number; monthlyStipend?: number; initialSavings?: number } | null = null;
-              try {
-                const raw = typeof window !== "undefined" ? localStorage.getItem("grad_school_plan_v1") : null;
-                if (raw) plan = JSON.parse(raw);
-              } catch { plan = null; }
-              if (!plan) return null;
+            {/* ── 儲蓄規劃摘要卡 ── */}
+            {showCard("savings-summary") && (() => {
+              // 讀取各計畫設定
+              let gradPlan: { linkedGoalId?: string; tuition?: number; living?: number; duration?: number; monthlyStipend?: number; initialSavings?: number } | null = null;
+              let efPlan:   { linkedGoalId?: string; targetMonths?: number; manualTarget?: number; initialSavings?: number } | null = null;
+              let eduPlan:  { linkedGoalId?: string; augustAmount?: number; februaryAmount?: number; startYear?: number; startMonth?: number; totalPayments?: number; paidCount?: number } | null = null;
+              try { gradPlan = JSON.parse(localStorage.getItem("grad_school_plan_v1") ?? "null"); } catch { /* ignore */ }
+              try { efPlan   = JSON.parse(localStorage.getItem("emergency_fund_plan_v1")  ?? "null"); } catch { /* ignore */ }
+              try { eduPlan  = JSON.parse(localStorage.getItem("education_program_plan_v1") ?? "null"); } catch { /* ignore */ }
 
+              const recentMonths = (data?.monthly ?? []).slice(-3);
+              const avgExp = recentMonths.length > 0 ? recentMonths.reduce((s, m) => s + m.expense, 0) / recentMonths.length : 0;
+
+              // ── 緊急預備金 ──
+              const efTargetMonths = efPlan?.targetMonths ?? 3;
+              const efTarget = (efPlan?.manualTarget ?? 0) > 0 ? efPlan!.manualTarget! : efTargetMonths * avgExp;
+              const efGoal = efPlan?.linkedGoalId ? goals.find(g => g.id === efPlan!.linkedGoalId) : null;
+              const efSavings = efGoal?.linkedSource
+                ? (balances.find(b => b.source === efGoal!.linkedSource)?.balance ?? efGoal.savedAmount)
+                : (efGoal?.savedAmount ?? efPlan?.initialSavings ?? 0);
+              const efCoverage = avgExp > 0 ? efSavings / avgExp : 0;
+              const efPct = efTarget > 0 ? Math.min(100, (efSavings / efTarget) * 100) : 0;
+              const efColor = efCoverage >= efTargetMonths ? "#10B981" : efCoverage >= 1 ? "#F59E0B" : "#EF4444";
+
+              // ── 研究所 ──
               const ENROLL_YM = "2028-09";
               const ENROLLMENT = new Date(2028, 8, 1);
               const now = new Date();
-              const msLeft = ENROLLMENT.getTime() - now.getTime();
-              const daysLeft = Math.max(0, Math.floor(msLeft / 86400000));
-              const monthsLeft = Math.max(0, Math.round(daysLeft / 30));
-
-              const dur = plan.duration ?? 24;
-              const netLiving = Math.max(0, (plan.living ?? 0) - (plan.monthlyStipend ?? 0));
-
-              // 就讀期間仍需支付的貸款總額
+              const monthsLeft = Math.max(0, Math.round((ENROLLMENT.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30)));
+              const dur = gradPlan?.duration ?? 24;
+              const netLiving = Math.max(0, (gradPlan?.living ?? 0) - (gradPlan?.monthlyStipend ?? 0));
               const loansDuringSchool = loansTimeline.reduce((s, l) => {
                 if (!l.payoffDate || l.payoffDate < ENROLL_YM) return s;
                 const [py, pm] = l.payoffDate.split("-").map(Number);
-                const overlapMonths = Math.min(dur, (py - 2028) * 12 + (pm - 9));
-                return s + l.monthlyPrincipal * Math.max(0, overlapMonths);
+                return s + l.monthlyPrincipal * Math.max(0, Math.min(dur, (py - 2028) * 12 + (pm - 9)));
               }, 0);
+              const gradTarget = gradPlan ? (gradPlan.tuition ?? 0) + netLiving * dur + loansDuringSchool : 0;
+              const gradGoal = gradPlan?.linkedGoalId ? goals.find(g => g.id === gradPlan!.linkedGoalId) : null;
+              const gradSavings = gradGoal?.linkedSource
+                ? (balances.find(b => b.source === gradGoal!.linkedSource)?.balance ?? gradGoal.savedAmount)
+                : (gradGoal?.savedAmount ?? gradPlan?.initialSavings ?? 0);
+              const gradGap = Math.max(0, gradTarget - gradSavings);
+              const gradPct = gradTarget > 0 ? Math.min(100, (gradSavings / gradTarget) * 100) : 0;
+              const gradMonthlyNeed = monthsLeft > 0 ? gradGap / monthsLeft : 0;
+              const gradOnTrack = gradSavings + gradMonthlyNeed * monthsLeft >= gradTarget;
 
-              const totalTarget = (plan.tuition ?? 0) + netLiving * dur + loansDuringSchool;
+              // ── 教育學程（下一筆）──
+              const eduNextPayment = (() => {
+                if (!eduPlan) return null;
+                const startYear = eduPlan.startYear ?? now.getFullYear();
+                const startMonth = eduPlan.startMonth ?? 8;
+                const total = eduPlan.totalPayments ?? 4;
+                const paid  = eduPlan.paidCount ?? 0;
+                if (paid >= total) return null;
+                const cursor = new Date(startYear, startMonth - 1, 1);
+                for (let i = 0; i < total; i++) {
+                  const m = cursor.getMonth() + 1;
+                  const y = cursor.getFullYear();
+                  const ma = Math.max(0, (y - now.getFullYear()) * 12 + (cursor.getMonth() - now.getMonth()));
+                  if (i >= paid && ma >= 0) {
+                    return { label: `${y}/${String(m).padStart(2,"0")}`, amount: m === 8 ? (eduPlan.augustAmount ?? 45000) : (eduPlan.februaryAmount ?? 45000), monthsAway: ma };
+                  }
+                  cursor.setMonth(cursor.getMonth() + 6);
+                }
+                return null;
+              })();
 
-              // 已存金額：連結目標的銀行餘額 → 目標的 savedAmount → initialSavings
-              const linkedGoal = plan.linkedGoalId ? goals.find(g => g.id === plan!.linkedGoalId) : null;
-              let savings = 0;
-              if (linkedGoal?.linkedSource) {
-                savings = balances.find(b => b.source === linkedGoal.linkedSource)?.balance ?? linkedGoal.savedAmount;
-              } else if (linkedGoal) {
-                savings = linkedGoal.savedAmount;
-              } else {
-                savings = plan.initialSavings ?? 0;
-              }
-
-              const progressPct = totalTarget > 0 ? Math.min(100, (savings / totalTarget) * 100) : (savings > 0 ? 100 : 0);
-
-              // 近 3 個月平均月淨收入
-              const recentMonths = (data?.monthly ?? []).slice(-3);
-              const avgMonthlyNet = recentMonths.length > 0
-                ? recentMonths.reduce((s, m) => s + (m.income - m.expense), 0) / recentMonths.length
-                : 0;
-
-              const gap = totalTarget - savings;
-              const projectedSavings = savings + avgMonthlyNet * monthsLeft;
-              const onTrack = projectedSavings >= totalTarget;
-              const monthlyNeeded = monthsLeft > 0 && gap > 0 ? gap / monthsLeft : 0;
-
-              const statusColor = onTrack ? "#10B981" : "#F59E0B";
-              const statusText  = onTrack ? "進度超前" : "需加快存款";
-              const statusIcon  = onTrack ? "✅" : "⚠️";
-
-              return (
-                <div className="rounded-2xl p-5 relative overflow-hidden"
-                  style={{ background: "var(--bg-card)", border: "1px solid rgba(99,102,241,0.3)", boxShadow: "0 0 24px rgba(99,102,241,0.08)" }}>
-                  <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl"
-                    style={{ background: "linear-gradient(90deg, #6366F1, #8B5CF6)" }} />
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">🎓</span>
-                      <div>
-                        <p className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>研究所入學準備</p>
-                        <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
-                          2028/09/01 · 還有 <span className="font-semibold tabular-nums">{daysLeft}</span> 天（約 {monthsLeft} 個月）
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-semibold px-2.5 py-1 rounded-full"
-                        style={{ background: `${statusColor}20`, color: statusColor }}>
-                        {statusIcon} {statusText}
-                      </span>
-                      <button
-                        onClick={() => setActiveTab("grad-school")}
-                        className="text-[13px] font-semibold px-3 py-1.5 rounded-xl transition-opacity hover:opacity-80"
-                        style={{ background: "rgba(99,102,241,0.15)", color: "#818CF8", border: "1px solid rgba(99,102,241,0.3)" }}>
-                        查看詳情 →
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* 進度條 */}
-                  <div className="mb-3">
-                    <div className="flex justify-between text-[12px] mb-1.5" style={{ color: "var(--text-muted)" }}>
-                      <span>已存 NT$ {fmt(savings)}</span>
-                      <span>目標 NT$ {fmt(totalTarget)}　{Math.round(progressPct)}%</span>
-                    </div>
-                    <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
-                      <div className="h-full rounded-full transition-all duration-700"
-                        style={{ width: `${progressPct}%`, background: "linear-gradient(90deg, #6366F1, #8B5CF6)" }} />
-                    </div>
-                  </div>
-
-                  {/* 3 欄統計 */}
-                  <div className="grid grid-cols-3 gap-3 mt-3">
-                    {[
-                      { label: gap > 0 ? "缺口" : "超額", value: Math.abs(gap), color: gap > 0 ? "#F87171" : "#10B981", prefix: "NT$ " },
-                      { label: "預測達成", value: projectedSavings, color: onTrack ? "#10B981" : "#F59E0B", prefix: "NT$ " },
-                      { label: "每月需存", value: monthlyNeeded, color: "#60A5FA", prefix: "NT$ " },
-                    ].map(s => (
-                      <div key={s.label} className="rounded-xl p-3 text-center"
-                        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                        <p className="text-[11px] mb-1" style={{ color: "var(--text-muted)" }}>{s.label}</p>
-                        <p className="text-[15px] font-bold tabular-nums" style={{ color: s.color }}>
-                          {s.prefix}{fmt(s.value)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ── 緊急預備金進度卡 ── */}
-            {(() => {
-              let efPlan: { linkedGoalId?: string; targetMonths?: number; manualTarget?: number; initialSavings?: number } | null = null;
-              try {
-                const raw = typeof window !== "undefined" ? localStorage.getItem("emergency_fund_plan_v1") : null;
-                if (raw) efPlan = JSON.parse(raw);
-              } catch { efPlan = null; }
-
-              // 近 3 個月平均支出
-              const recentMonths = (data?.monthly ?? []).slice(-3);
-              const avgExp = recentMonths.length > 0
-                ? recentMonths.reduce((s, m) => s + m.expense, 0) / recentMonths.length
-                : 0;
-              const avgNet = recentMonths.length > 0
-                ? recentMonths.reduce((s, m) => s + (m.income - m.expense), 0) / recentMonths.length
-                : 0;
-
-              // 目標金額
-              const efTargetMonths = efPlan?.targetMonths ?? 3;
-              const efTarget = (efPlan?.manualTarget ?? 0) > 0
-                ? efPlan!.manualTarget!
-                : efTargetMonths * avgExp;
-
-              // 已存金額：連結目標銀行 → savedAmount → initialSavings
-              const efGoalId  = efPlan?.linkedGoalId ?? "";
-              const efGoal    = efGoalId ? goals.find(g => g.id === efGoalId) : null;
-              let efSavings   = 0;
-              if (efGoal?.linkedSource) {
-                efSavings = balances.find(b => b.source === efGoal.linkedSource)?.balance ?? efGoal.savedAmount;
-              } else if (efGoal) {
-                efSavings = efGoal.savedAmount;
-              } else {
-                efSavings = efPlan?.initialSavings ?? 0;
-              }
-
-              // 只在有有意義資料時顯示
-              if (efTarget === 0 && efSavings === 0) return null;
-
-              const efPct       = efTarget > 0 ? Math.min(100, (efSavings / efTarget) * 100) : (efSavings > 0 ? 100 : 0);
-              const efCoverage  = avgExp > 0 ? efSavings / avgExp : 0;
-              const efGap       = Math.max(0, efTarget - efSavings);
-              const efMonthly   = avgNet;
-              const efMonthsLeft = efMonthly > 0 && efGap > 0 ? Math.ceil(efGap / efMonthly) : null;
-
-              const efColor = efCoverage >= efTargetMonths ? "#10B981" : efCoverage >= 1 ? "#F59E0B" : "#EF4444";
-              const efIcon  = efCoverage >= efTargetMonths ? "✅" : efCoverage >= 1 ? "⚠️" : "🚨";
-              const efLabel = efCoverage >= efTargetMonths ? "目標達成" : efCoverage >= 1 ? "警戒" : "危險";
+              const hasAnyPlan = gradPlan || efPlan || eduPlan;
+              if (!hasAnyPlan) return null;
 
               return (
                 <div className="rounded-2xl p-5 relative overflow-hidden"
-                  style={{ background: "var(--bg-card)", border: `1px solid ${efColor}30`, boxShadow: `0 0 20px ${efColor}08` }}>
+                  style={{ background: "var(--bg-card)", border: "1px solid rgba(99,102,241,0.25)", boxShadow: "0 0 24px rgba(99,102,241,0.06)", order: cardOrder.indexOf("savings-summary") }}>
                   <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl"
-                    style={{ background: `linear-gradient(90deg, ${efColor}, ${efColor}80)` }} />
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">🛡️</span>
-                      <div>
-                        <p className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>緊急預備金</p>
-                        <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
-                          目標 {efTargetMonths} 個月 · 目前覆蓋 <span className="font-semibold tabular-nums">{efCoverage.toFixed(1)}</span> 個月
-                        </p>
-                      </div>
+                    style={{ background: "linear-gradient(90deg, #10B981, #6366F1, #F59E0B)" }} />
+
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>💰 儲蓄規劃</p>
+                      <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                        緊急預備金 · 教育學程 · 研究所
+                      </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-semibold px-2.5 py-1 rounded-full"
-                        style={{ background: `${efColor}20`, color: efColor }}>
-                        {efIcon} {efLabel}
-                      </span>
-                      <button
-                        onClick={() => setActiveTab("emergency-fund")}
-                        className="text-[13px] font-semibold px-3 py-1.5 rounded-xl transition-opacity hover:opacity-80"
-                        style={{ background: `${efColor}15`, color: efColor, border: `1px solid ${efColor}30` }}>
-                        查看詳情 →
-                      </button>
-                    </div>
+                    <button onClick={() => setActiveTab("savings-plan")}
+                      className="text-[13px] font-semibold px-3 py-1.5 rounded-xl transition-opacity hover:opacity-80"
+                      style={{ background: "rgba(99,102,241,0.12)", color: "#818CF8", border: "1px solid rgba(99,102,241,0.25)" }}>
+                      完整規劃 →
+                    </button>
                   </div>
-                  <div className="mb-3">
-                    <div className="flex justify-between text-[12px] mb-1.5" style={{ color: "var(--text-muted)" }}>
-                      <span>已存 NT$ {fmt(efSavings)}</span>
-                      <span>目標 NT$ {fmt(efTarget)}　{Math.round(efPct)}%</span>
-                    </div>
-                    <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
-                      <div className="h-full rounded-full transition-all duration-700"
-                        style={{ width: `${efPct}%`, background: `linear-gradient(90deg, ${efColor}, ${efColor}cc)` }} />
-                    </div>
-                  </div>
+
+                  {/* 三目標橫列 */}
                   <div className="grid grid-cols-3 gap-3">
-                    {[
-                      { label: efGap > 0 ? "缺口" : "超額", value: Math.abs(efGap), color: efGap > 0 ? "#F87171" : "#10B981" },
-                      { label: "預計達成", value: efMonthsLeft ? `${efMonthsLeft} 個月後` : efGap === 0 ? "已達標" : "—", isText: true, color: efGap === 0 ? "#10B981" : "#A78BFA" },
-                      { label: "覆蓋月數", value: efCoverage.toFixed(1) + " 個月", isText: true, color: efColor },
-                    ].map(s => (
-                      <div key={s.label} className="rounded-xl p-3 text-center"
-                        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                        <p className="text-[11px] mb-1" style={{ color: "var(--text-muted)" }}>{s.label}</p>
-                        <p className="text-[15px] font-bold tabular-nums" style={{ color: s.color }}>
-                          {s.isText ? s.value : `NT$ ${fmt(s.value as number)}`}
-                        </p>
+                    {/* 緊急預備金 */}
+                    <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${efColor}25` }}>
+                      <p className="text-[11px] font-semibold mb-1" style={{ color: efColor }}>🛡️ 緊急預備金</p>
+                      <p className="text-[16px] font-black tabular-nums" style={{ color: efColor }}>
+                        {efCoverage.toFixed(1)} 個月
+                      </p>
+                      <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                        目標 {efTargetMonths} 個月
+                      </p>
+                      <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                        <div className="h-full rounded-full" style={{ width: `${efPct}%`, background: efColor }} />
                       </div>
-                    ))}
+                    </div>
+
+                    {/* 教育學程 */}
+                    <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(245,158,11,0.25)" }}>
+                      <p className="text-[11px] font-semibold mb-1" style={{ color: "#F59E0B" }}>📚 教育學程</p>
+                      {eduNextPayment ? (
+                        <>
+                          <p className="text-[16px] font-black tabular-nums" style={{ color: "#F59E0B" }}>
+                            NT$ {fmt(eduNextPayment.amount)}
+                          </p>
+                          <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                            {eduNextPayment.label} · {eduNextPayment.monthsAway} 個月後
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-[16px] font-black" style={{ color: "#10B981" }}>已繳清</p>
+                          <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>無待繳款項</p>
+                        </>
+                      )}
+                    </div>
+
+                    {/* 研究所 */}
+                    <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${gradOnTrack ? "rgba(16,185,129,0.25)" : "rgba(99,102,241,0.25)"}` }}>
+                      <p className="text-[11px] font-semibold mb-1" style={{ color: "#818CF8" }}>🎓 研究所</p>
+                      <p className="text-[16px] font-black tabular-nums" style={{ color: gradGap > 0 ? "#818CF8" : "#10B981" }}>
+                        {gradGap > 0 ? `差 NT$ ${fmt(gradGap)}` : "✅ 足夠"}
+                      </p>
+                      <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                        {monthsLeft} 個月後入學
+                      </p>
+                      {gradTarget > 0 && (
+                        <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                          <div className="h-full rounded-full" style={{ width: `${gradPct}%`, background: gradOnTrack ? "#10B981" : "#6366F1" }} />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
             })()}
 
+            {showCard("net-worth") && <div style={{ order: cardOrder.indexOf("net-worth"), display: "flex", flexDirection: "column", gap: "1.25rem" }}>
             {/* Hero: 淨資產 */}
             <div className="rounded-2xl p-6 relative overflow-hidden" style={{
               background: "var(--hero-bg)",
@@ -1524,18 +1969,29 @@ export default function DashboardPage() {
               </p>
               <div className="grid grid-cols-2 gap-3 relative sm:grid-cols-4">
                 {[
-                  { label: selectedMonth ? `${selectedMonth.slice(5)}月收入` : "本期收入", value: activeTotals?.income  ?? 0, pos: true  },
-                  { label: selectedMonth ? `${selectedMonth.slice(5)}月支出` : "本期支出", value: activeTotals?.expense ?? 0, pos: false },
-                  { label: "貸款餘額",   value: netWorth?.totalLoanDebt     ?? 0, pos: null  },
-                  { label: "信用卡未繳", value: netWorth?.totalCreditDebt   ?? 0, pos: null  },
-                ].map(item => (
-                  <div key={item.label} className="rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <p className="text-[14px] font-medium mb-1.5 tracking-wide" style={{ color: "rgba(147,197,253,0.75)" }}>{item.label}</p>
-                    <p className="text-[20px] font-bold" style={{ color: item.pos === true ? "#34D399" : item.pos === false ? "#F87171" : "rgba(255,255,255,0.75)" }}>
-                      {item.pos === true ? "+" : item.pos === false ? "−" : ""}NT$ {fmt(item.value)}
-                    </p>
-                  </div>
-                ))}
+                  { label: selectedMonth ? `${selectedMonth.slice(5)}月收入` : "本期收入", value: activeTotals?.income  ?? 0, pos: true  as boolean | null, tab: null as TabId | null },
+                  { label: selectedMonth ? `${selectedMonth.slice(5)}月支出` : "本期支出", value: activeTotals?.expense ?? 0, pos: false as boolean | null, tab: null as TabId | null },
+                  { label: "貸款餘額",   value: netWorth?.totalLoanDebt     ?? 0, pos: null as boolean | null, tab: "loans" as TabId | null },
+                  { label: "信用卡未繳", value: netWorth?.totalCreditDebt   ?? 0, pos: null as boolean | null, tab: "loans" as TabId | null },
+                ].map(item => {
+                  const clickable = item.tab != null;
+                  return (
+                    <div key={item.label}
+                      className="rounded-xl px-4 py-3"
+                      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", cursor: clickable ? "pointer" : "default", transition: "background 0.15s" }}
+                      onClick={() => { if (item.tab) setActiveTab(item.tab); }}
+                      onMouseEnter={e => { if (clickable) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.08)"; }}
+                      onMouseLeave={e => { if (clickable) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.04)"; }}>
+                      <p className="text-[14px] font-medium mb-1.5 tracking-wide flex items-center gap-1" style={{ color: "rgba(147,197,253,0.75)" }}>
+                        {item.label}
+                        {clickable && <span className="text-[11px] opacity-60">↗</span>}
+                      </p>
+                      <p className="text-[20px] font-bold" style={{ color: item.pos === true ? "#34D399" : item.pos === false ? "#F87171" : "rgba(255,255,255,0.75)" }}>
+                        {item.pos === true ? "+" : item.pos === false ? "−" : ""}NT$ {fmt(item.value)}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
               {(netWorth?.monthlyInterest ?? 0) > 0 && (
                 <p className="text-[14px] mt-4 relative" style={{ color: "rgba(147,197,253,0.7)" }}>
@@ -1545,6 +2001,18 @@ export default function DashboardPage() {
             </div>
 
             {/* Bank balances */}
+            {balances.length === 0 && (
+              <div className="rounded-2xl p-6 text-center" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+                <p className="text-3xl mb-2">🏦</p>
+                <p className="text-[15px] font-bold mb-1" style={{ color: "var(--text-primary)" }}>尚無帳戶餘額</p>
+                <p className="text-[13px] mb-3" style={{ color: "var(--text-muted)" }}>匯入銀行 CSV 後帳戶餘額將自動顯示</p>
+                <button onClick={() => setActiveTab("import")}
+                  className="px-4 py-1.5 rounded-xl text-[13px] font-semibold text-white"
+                  style={{ background: "var(--btn-gradient)" }}>
+                  前往匯入 CSV →
+                </button>
+              </div>
+            )}
             {balances.length > 0 && (() => {
               const ACCENT_COLORS = ["#4299E1","#10B981","#8B5CF6","#F59E0B","#EF4444","#06B6D4","#F97316","#22C55E"];
               return (
@@ -1650,6 +2118,7 @@ export default function DashboardPage() {
               </div>
               );
             })()}
+            </div>}
 
             {/* 別名 / 儲蓄目標 / 現金餘額 編輯 Modal */}
             {bankEditSource && (() => {
@@ -1755,9 +2224,108 @@ export default function DashboardPage() {
               );
             })()}
 
+            {/* ── 當月 vs 上月對比卡 ── */}
+            {showCard("month-compare") && data && prevMonthSummary && (() => {
+              const cur  = data.totals;
+              const prev = prevMonthSummary.totals;
+              const expDiff    = cur.expense - prev.expense;
+              const incDiff    = cur.income  - prev.income;
+              const expDiffPct = prev.expense > 0 ? Math.round((expDiff / prev.expense) * 100) : null;
+              const incDiffPct = prev.income  > 0 ? Math.round((incDiff / prev.income)  * 100) : null;
+              const now = new Date();
+              const curLabel  = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+              const prevDate  = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+              const prevLabel = `${prevDate.getFullYear()}-${String(prevDate.getMonth()+1).padStart(2,"0")}`;
+              // Top 3 分類變化
+              const curCats  = new Map(data.totals && data.byCategory.filter(c => c.type === "支出").map(c => [c.category, c.total]));
+              const prevCats = new Map(prevMonthSummary.byCategory.filter(c => c.type === "支出").map(c => [c.category, c.total]));
+              const allCats  = Array.from(new Set([...curCats.keys(), ...prevCats.keys()]));
+              const catDiffs = allCats.map(cat => ({ cat, diff: (curCats.get(cat) ?? 0) - (prevCats.get(cat) ?? 0) }))
+                .filter(x => Math.abs(x.diff) > 50)
+                .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).slice(0, 3);
+              return (
+                <div className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-card)", border: "1px solid var(--border)", order: cardOrder.indexOf("month-compare") }}>
+                  <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border-inner)" }}>
+                    <p className="text-[14px] font-bold" style={{ color: "var(--text-primary)" }}>📊 當月 vs 上月</p>
+                    <div className="flex items-center gap-3">
+                      <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>{curLabel} vs {prevLabel}</p>
+                      <button onClick={() => setMonthCompareExpanded(o => !o)}
+                        className="text-[12px] font-semibold px-2.5 py-1 rounded-lg transition-colors"
+                        style={{ background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border-inner)" }}>
+                        {monthCompareExpanded ? "收起 ▲" : "分類明細 ▼"}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 divide-x" style={{ borderColor: "var(--border-inner)" }}>
+                    {[
+                      { label: "支出", cur: cur.expense, prev: prev.expense, diff: expDiff, pct: expDiffPct, upBad: true  },
+                      { label: "收入", cur: cur.income,  prev: prev.income,  diff: incDiff, pct: incDiffPct, upBad: false },
+                    ].map(item => {
+                      const up    = item.diff > 0;
+                      const color = item.diff === 0 ? "var(--text-muted)" : (up === item.upBad ? "#EF4444" : "#10B981");
+                      return (
+                        <div key={item.label} className="px-5 py-4">
+                          <p className="text-[12px] font-semibold mb-1" style={{ color: "var(--text-muted)" }}>{item.label}</p>
+                          <p className="text-[20px] font-black tabular-nums" style={{ color: "var(--text-primary)" }}>NT$ {fmt(item.cur)}</p>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="text-[13px] font-bold tabular-nums" style={{ color }}>
+                              {item.diff > 0 ? "▲" : item.diff < 0 ? "▼" : "─"} NT$ {fmt(Math.abs(item.diff))}
+                            </span>
+                            {item.pct !== null && (
+                              <span className="text-[12px] font-semibold px-1.5 py-0.5 rounded" style={{ background: color + "18", color }}>
+                                {item.pct > 0 ? "+" : ""}{item.pct}%
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[12px] mt-0.5 tabular-nums" style={{ color: "var(--text-muted)" }}>上月 NT$ {fmt(item.prev)}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {catDiffs.length > 0 && (
+                    <div className="px-5 py-3 flex flex-wrap gap-2" style={{ borderTop: "1px solid var(--border-inner)" }}>
+                      <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>支出變化：</span>
+                      {catDiffs.map(({ cat, diff }) => {
+                        const c = diff > 0 ? "#EF4444" : "#10B981";
+                        return (
+                          <span key={cat} className="text-[12px] font-semibold px-2 py-0.5 rounded-full" style={{ background: c + "15", color: c }}>
+                            {cat} {diff > 0 ? "+" : "−"}NT${fmt(Math.abs(diff))}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {/* 展開：全分類對比 BarChart */}
+                  {monthCompareExpanded && (() => {
+                    const chartData = allCats
+                      .map(cat => ({ cat, 當月: curCats.get(cat) ?? 0, 上月: prevCats.get(cat) ?? 0 }))
+                      .filter(d => d.當月 > 0 || d.上月 > 0)
+                      .sort((a, b) => (b.當月 + b.上月) - (a.當月 + a.上月))
+                      .slice(0, 10);
+                    return (
+                      <div className="px-5 pb-4 pt-3" style={{ borderTop: "1px solid var(--border-inner)" }}>
+                        <p className="text-[13px] font-semibold mb-3" style={{ color: "var(--text-sub)" }}>支出分類對比（前 10 項）</p>
+                        <ResponsiveContainer width="100%" height={220}>
+                          <BarChart data={chartData} margin={{ top: 4, right: 4, left: -10, bottom: 40 }} barCategoryGap="30%">
+                            <XAxis dataKey="cat" tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} angle={-30} textAnchor="end" interval={0} />
+                            <YAxis tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : String(v)} />
+                            <Tooltip formatter={(v: number, name: string) => [`NT$ ${fmt(v)}`, name]}
+                              contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 12, color: "var(--text-primary)" }} />
+                            <Bar dataKey="當月" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="上月" fill="#64748B" radius={[4, 4, 0, 0]} />
+                            <Legend wrapperStyle={{ fontSize: 12, color: "var(--text-muted)", paddingTop: 8 }} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
+
             {data && <>
               {/* ── 財務健康評分（置頂摘要）── */}
-              {(() => {
+              {showCard("health-score") && <div style={{ order: cardOrder.indexOf("health-score") }}>{(() => {
                 const savingsRate = (data?.totals?.income ?? 0) > 0
                   ? ((data!.totals.income - data!.totals.expense) / data!.totals.income) * 100 : 0;
                 const debtRatio = (netWorth?.totalAssets ?? 0) > 0
@@ -1784,7 +2352,7 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-5">
                       {/* Score circle */}
                       <div className="flex-shrink-0 text-center w-20">
-                        <p className="text-[44px] font-black leading-none tabular-nums" style={{ color: grade.color }}>{total}</p>
+                        <AnimatedScore target={total} color={grade.color} />
                         <p className="text-[14px] font-bold mt-0.5 px-2 py-0.5 rounded-full inline-block" style={{ color: grade.color, background: grade.color + "18" }}>{grade.label}</p>
                         <p className="text-[14px] mt-1" style={{ color: "var(--text-muted)" }}>財務健康評分</p>
                       </div>
@@ -1799,7 +2367,7 @@ export default function DashboardPage() {
                                 <span className="tabular-nums font-bold" style={{ color: c }}>{it.detail}</span>
                               </div>
                               <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--bg-input)" }}>
-                                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${it.score}%`, background: c }} />
+                                <AnimatedBar pct={it.score} color={c} />
                               </div>
                             </div>
                           );
@@ -1836,8 +2404,8 @@ export default function DashboardPage() {
                               <XAxis dataKey="month" tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
                               <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
                               <Tooltip
-                                contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 12 }}
-                                formatter={(v: number, name: string) => [`${v}`, name]}
+                                contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 12, color: "var(--text-primary)" }}
+                                formatter={(v: number, name: string) => [`${v} 分`, name]}
                               />
                               <ReferenceLine y={80} stroke="#10B981" strokeDasharray="3 3" strokeOpacity={0.4} />
                               <ReferenceLine y={60} stroke="#F59E0B" strokeDasharray="3 3" strokeOpacity={0.4} />
@@ -1868,8 +2436,9 @@ export default function DashboardPage() {
                     )}
                   </Card>
                 );
-              })()}
+              })()}</div>}
 
+              {showCard("trend") && <div style={{ order: cardOrder.indexOf("trend"), display: "flex", flexDirection: "column", gap: "1.25rem" }}>
               <SectionLabel label="趨勢追蹤" />
               {/* ── 月份選擇器 ── */}
               {data.monthly.length > 1 && (
@@ -2067,7 +2636,7 @@ export default function DashboardPage() {
                         <XAxis dataKey="month" tick={{ fontSize: 12, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} tickFormatter={v => v.slice(5)} />
                         <YAxis tick={{ fontSize: 12, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v}%`} />
                         <Tooltip formatter={(v: number) => [`${v}%`, "儲蓄率"]}
-                          contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", background: "var(--bg-card)", color: "var(--text-primary)", fontSize: 12 }} />
+                          contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 12, color: "var(--text-primary)" }} />
                         <Area type="monotone" dataKey="rate" name="儲蓄率" stroke={rateColor} strokeWidth={2.5}
                           fill="url(#gSavings)" dot={{ r: 4, fill: rateColor, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 0 }} />
                       </AreaChart>
@@ -2079,6 +2648,9 @@ export default function DashboardPage() {
                 );
               })()}
 
+              </div>}
+
+              {showCard("goals") && <div style={{ order: cardOrder.indexOf("goals"), display: "flex", flexDirection: "column", gap: "1.25rem" }}>
               <SectionLabel label="目標規劃" />
               {/* ── 財務目標追蹤 ── */}
               <Card className="p-6">
@@ -2538,6 +3110,9 @@ export default function DashboardPage() {
                 </div>
               )}
 
+              </div>}
+
+              {showCard("distribution") && <div style={{ order: cardOrder.indexOf("distribution"), display: "flex", flexDirection: "column", gap: "1.25rem" }}>
               <SectionLabel label="收支分佈" />
               {/* Chart 2: 資產 & 負債分佈 Donut */}
               {netWorth && (
@@ -2814,6 +3389,9 @@ export default function DashboardPage() {
                 );
               })()}
 
+              </div>}
+
+              {showCard("fixed-loans") && <div style={{ order: cardOrder.indexOf("fixed-loans"), display: "flex", flexDirection: "column", gap: "1.25rem" }}>
               {/* 固定支出與貸款 — 導引連結卡 */}
               <SectionLabel label="固定支出與貸款" />
               {(fixedExpenses.length > 0 || loansTimeline.length > 0) && (() => {
@@ -2877,6 +3455,7 @@ export default function DashboardPage() {
                   </div>
                 );
               })()}
+              </div>}
 
             </>}
 
@@ -2935,21 +3514,45 @@ export default function DashboardPage() {
               </Card>
             )}
 
-            {/* Summary bar */}
-            {data && (
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: "總收入", value: data.totals.income,  color: "#34D399", prefix: "+" },
-                  { label: "總支出", value: data.totals.expense, color: "#F87171", prefix: "−" },
-                  { label: "淨收支", value: Math.abs(data.totals.net), color: data.totals.net >= 0 ? "#34D399" : "#F87171", prefix: data.totals.net >= 0 ? "+" : "−" },
-                ].map(item => (
-                  <div key={item.label} className="rounded-2xl px-5 py-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                    <p className="text-[14px] font-medium mb-1" style={{ color: "var(--text-sub)" }}>{item.label}</p>
-                    <p className="text-[18px] font-black" style={{ color: item.color }}>{item.prefix}NT$ {fmt(item.value)}</p>
+            {/* ── 收支小結常駐卡 ── */}
+            {data && (() => {
+              const { income, expense, net } = data.totals;
+              const savingsRate = income > 0 ? Math.round(((income - expense) / income) * 100) : null;
+              const rateColor = savingsRate === null ? "var(--text-muted)" : savingsRate >= 20 ? "#10B981" : savingsRate >= 0 ? "#F59E0B" : "#EF4444";
+              const budgetsOver = budgetOverview.filter(b => b.amount > 0 && b.spent > b.amount).length;
+              return (
+                <div className="rounded-2xl px-5 py-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[13px] font-bold tracking-wide uppercase" style={{ color: "var(--text-muted)" }}>
+                      {currentMonth.slice(0,4)} 年 {parseInt(currentMonth.slice(5))} 月收支摘要
+                    </p>
+                    {budgetsOver > 0 && (
+                      <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(239,68,68,0.12)", color: "#F87171" }}>
+                        🚨 {budgetsOver} 項超標
+                      </span>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
+                  <div className="grid grid-cols-4 gap-3">
+                    {[
+                      { label: "本月收入", value: income,  color: "#34D399", prefix: "+" },
+                      { label: "本月支出", value: expense, color: "#F87171", prefix: "−" },
+                      { label: "淨收支",   value: Math.abs(net), color: net >= 0 ? "#34D399" : "#F87171", prefix: net >= 0 ? "+" : "−" },
+                    ].map(item => (
+                      <div key={item.label}>
+                        <p className="text-[12px] mb-1" style={{ color: "var(--text-muted)" }}>{item.label}</p>
+                        <p className="text-[17px] font-black tabular-nums" style={{ color: item.color }}>{item.prefix}NT$ {fmt(item.value)}</p>
+                      </div>
+                    ))}
+                    <div>
+                      <p className="text-[12px] mb-1" style={{ color: "var(--text-muted)" }}>儲蓄率</p>
+                      <p className="text-[17px] font-black tabular-nums" style={{ color: rateColor }}>
+                        {savingsRate !== null ? `${savingsRate}%` : "—"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             <Card>
               {/* Search + filter toggle */}
@@ -3050,35 +3653,6 @@ export default function DashboardPage() {
                   </p>
                   {txData && <span className="text-[13px] px-2 py-0.5 rounded-full" style={{ background: "var(--border-inner)", color: "var(--text-muted)" }}>共 {txData.total} 筆</span>}
                   <div className="flex-1" />
-                  {/* Pagination inline */}
-                  {txData && txData.totalPages > 1 && (
-                    <div className="flex items-center gap-1">
-                      <button disabled={txPage <= 1}
-                        onClick={() => { setTxPage(p => p - 1); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-                        className="px-2.5 py-1 rounded-lg text-[14px] font-semibold transition-all disabled:opacity-30"
-                        style={{ border: "1px solid var(--border)", color: "var(--text-sub)" }}>←</button>
-                      {Array.from({ length: txData.totalPages }, (_, i) => i + 1)
-                        .filter(p => p === 1 || p === txData.totalPages || Math.abs(p - txPage) <= 1)
-                        .reduce<(number | "…")[]>((acc, p, idx, arr) => {
-                          if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push("…");
-                          acc.push(p);
-                          return acc;
-                        }, [])
-                        .map((p, i) =>
-                          p === "…"
-                            ? <span key={`e${i}`} className="text-[14px] px-1" style={{ color: "var(--text-muted)" }}>…</span>
-                            : <button key={p} onClick={() => { setTxPage(p as number); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-                                className="w-7 h-7 rounded-lg text-[13px] font-bold transition-all"
-                                style={txPage === p ? { background: "var(--btn-gradient)", color: "#fff" } : { color: "var(--text-sub)" }}>
-                                {p}
-                              </button>
-                        )}
-                      <button disabled={txPage >= txData.totalPages}
-                        onClick={() => { setTxPage(p => p + 1); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-                        className="px-2.5 py-1 rounded-lg text-[14px] font-semibold transition-all disabled:opacity-30"
-                        style={{ border: "1px solid var(--border)", color: "var(--text-sub)" }}>→</button>
-                    </div>
-                  )}
                   {/* Divider */}
                   <div className="w-px h-5 flex-shrink-0" style={{ background: "var(--border-inner)" }} />
                   {/* Primary action */}
@@ -3099,6 +3673,16 @@ export default function DashboardPage() {
                     className="text-[14px] font-semibold px-2.5 py-1.5 rounded-lg transition-opacity hover:opacity-80 inline-flex items-center gap-1"
                     style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-sub)" }}>
                     🖨 月報
+                  </a>
+                  <a href="/api/transactions?export=json" download title="備份全部交易為 JSON"
+                    className="text-[14px] font-semibold px-2.5 py-1.5 rounded-lg transition-opacity hover:opacity-80 inline-flex items-center gap-1"
+                    style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-sub)" }}>
+                    ↓ 備份
+                  </a>
+                  <a href="/api/transactions?export=xlsx" download title="匯出全部交易為 Excel"
+                    className="text-[14px] font-semibold px-2.5 py-1.5 rounded-lg transition-opacity hover:opacity-80 inline-flex items-center gap-1"
+                    style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "#10B981" }}>
+                    ↓ Excel
                   </a>
                 </div>
 
@@ -3142,7 +3726,7 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {txLoading ? (
+              {txLoading && !txData ? (
                 <div className="flex justify-center py-16">
                   <div className="w-7 h-7 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "var(--accent)", borderTopColor: "transparent" }} />
                 </div>
@@ -3347,6 +3931,21 @@ export default function DashboardPage() {
                             </p>
                           </div>
 
+                          {/* Split — hover only */}
+                          <button
+                            onClick={() => {
+                              setSplitModal({ id: tx.id, date: tx.date, amount: tx.amount, type: tx.type, category: tx.category, note: tx.note });
+                              const half = Math.floor(tx.amount / 2);
+                              setSplitParts([
+                                { category: tx.category, amount: String(half), note: "" },
+                                { category: tx.category, amount: String(tx.amount - half), note: "" },
+                              ]);
+                            }}
+                            title="分割此筆"
+                            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all opacity-0 group-hover:opacity-100 hover:bg-blue-500/10 text-[13px]"
+                            style={{ color: "#60A5FA" }}>
+                            ⑂
+                          </button>
                           {/* Delete — hover only */}
                           <button
                             onClick={() => deleteTx(tx.id)}
@@ -3360,6 +3959,16 @@ export default function DashboardPage() {
                       })}
                     </div>
                   ))}
+                  {/* Infinite scroll sentinel */}
+                  {txData && txData.page < txData.totalPages ? (
+                    <div ref={txSentinelRef} className="flex justify-center py-6">
+                      {txLoading && <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "var(--accent)", borderTopColor: "transparent" }} />}
+                    </div>
+                  ) : txData && txData.items.length > 0 ? (
+                    <div className="py-5 text-center text-[13px]" style={{ color: "var(--text-muted)" }}>
+                      — 已顯示全部 {txData.total} 筆 —
+                    </div>
+                  ) : null}
                   {/* Batch action bar */}
                   {batchMode && (
                     <div className="sticky bottom-4 mx-4 mt-3 px-4 py-3 rounded-2xl flex items-center gap-3 flex-wrap shadow-2xl"
@@ -3377,7 +3986,33 @@ export default function DashboardPage() {
                         {selectedIds.size === txData!.items.length ? "取消全選" : "全選本頁"}
                       </button>
                       <div className="flex-1" />
-                      <span className="text-[13px] font-semibold" style={{ color: "var(--text-muted)" }}>批次改為分類：</span>
+                      {/* Merge button — only show when 2+ selected */}
+                      {selectedIds.size >= 2 && (
+                        <button
+                          onClick={() => { setMergeForm({ category: "", note: "" }); setMergeModal(true); }}
+                          className="text-[14px] font-bold px-3 py-1.5 rounded-lg transition-all"
+                          style={{ background: "rgba(245,158,11,0.15)", color: "#F59E0B", border: "1px solid rgba(245,158,11,0.35)" }}>
+                          ⊕ 合併 {selectedIds.size} 筆
+                        </button>
+                      )}
+                      <span className="text-[13px] font-semibold" style={{ color: "var(--text-muted)" }}>改備註：</span>
+                      <input
+                        type="text"
+                        placeholder="輸入新備註…"
+                        value={batchNote}
+                        onChange={e => setBatchNote(e.target.value)}
+                        className="text-[13px] px-2 py-1 rounded-lg outline-none w-36"
+                        style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                      />
+                      <button
+                        disabled={!batchNote.trim() || selectedIds.size === 0 || batchUpdating}
+                        onClick={() => batchUpdateNote(batchNote)}
+                        className="text-[13px] font-bold px-3 py-1.5 rounded-lg transition-all disabled:opacity-40"
+                        style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", border: "1px solid rgba(16,185,129,0.35)" }}>
+                        {batchUpdating ? "…" : "套用"}
+                      </button>
+                      <div className="w-px h-5 flex-shrink-0" style={{ background: "var(--border-inner)" }} />
+                      <span className="text-[13px] font-semibold" style={{ color: "var(--text-muted)" }}>改分類：</span>
                       <select
                         value={batchCat}
                         onChange={e => setBatchCat(e.target.value)}
@@ -3448,11 +4083,9 @@ export default function DashboardPage() {
         {activeTab === "spending-forecast"  && <SpendingForecast   isDemo={isDemo.current} />}
         {activeTab === "cashflow-forecast"  && <CashflowForecast   isDemo={isDemo.current} />}
         {activeTab === "bill-calendar"      && <BillCalendar        isDemo={isDemo.current} />}
-        {activeTab === "savings-challenge"  && <SavingsChallenge    isDemo={isDemo.current} />}
-        {activeTab === "emergency-fund"      && <EmergencyFundPlanner    isDemo={isDemo.current} />}
-        {activeTab === "learning-plan"      && <LearningPlanAdvisor     isDemo={isDemo.current} />}
-        {activeTab === "education-program"  && <EducationProgramPlanner isDemo={isDemo.current} />}
-        {activeTab === "grad-school"        && <GradSchoolPlanner       isDemo={isDemo.current} />}
+        {activeTab === "savings-plan"       && <SavingsPlan          isDemo={isDemo.current} onNavigate={t => setActiveTab(t as TabId)} />}
+        {activeTab === "education-program" && <EducationProgramPlanner isDemo={isDemo.current} />}
+        {activeTab === "grad-school"       && <GradSchoolPlanner       isDemo={isDemo.current} />}
 
         {/* ── Payees ── */}
         {activeTab === "payees"      && <PayeeManager />}
@@ -3461,6 +4094,9 @@ export default function DashboardPage() {
         {/* ── Import ── */}
         {activeTab === "import" && (
           <div className="space-y-6">
+            {/* ── JSON 備份還原 ── */}
+            <JsonRestorePanel onComplete={fetchData} />
+
             <CsvImport lineUserId={lineUserId} onImportComplete={() => {
               fetchData();
               // refresh duplicate list after import
@@ -3640,158 +4276,140 @@ export default function DashboardPage() {
         )}
 
         {/* ── Guide ── */}
-        {activeTab === "guide" && (
-          <div className="space-y-4">
-            {[
-              {
-                icon: "💬",
-                title: "LINE 記帳（最快速）",
-                color: "#10B981",
-                items: [
-                  { label: "一般支出", example: "早餐 80" },
-                  { label: "指定分類", example: "交通 悠遊卡 150" },
-                  { label: "收入", example: "薪資入帳 50000" },
-                  { label: "現金提款", example: "提款 3000（分類選現金）" },
-                  { label: "查詢本月摘要", example: "傳送「摘要」或「本月」" },
-                ],
-                note: "AI 會自動判斷金額、分類、備註，不需要特定格式。",
-              },
-              {
-                icon: "📁",
-                title: "CSV 匯入銀行對帳單",
-                color: "#3B82F6",
-                items: [
-                  { label: "玉山銀行存款", example: "CSV / XLS" },
-                  { label: "中國信託存款", example: "CSV（Big5 編碼）" },
-                  { label: "兆豐銀行存款", example: "CSV" },
-                  { label: "元大銀行存款", example: "CSV" },
-                  { label: "永豐銀行存款", example: "CSV" },
-                  { label: "凱基銀行存款", example: "TXT（固定寬度格式）" },
-                  { label: "永豐信用卡", example: "PDF（AI 解析）" },
-                ],
-                note: "至「匯入資料」頁面，選擇銀行或自動偵測，上傳檔案即可。系統自動去除重複紀錄。永豐信用卡由 AI 自動解析格式。",
-              },
-              {
-                icon: "✏️",
-                title: "手動新增記帳",
-                color: "#8B5CF6",
-                items: [
-                  { label: "進入「交易記錄」頁面", example: "" },
-                  { label: "點擊標題列的「＋ 新增」按鈕", example: "" },
-                  { label: "填入日期、類型（收入/支出）、金額、分類、備註", example: "" },
-                  { label: "儲存後立即出現在記錄中，並更新圖表統計", example: "" },
-                ],
-                note: "適合記錄現金消費、非銀行往來的臨時收支。",
-              },
-              {
-                icon: "💵",
-                title: "現金追蹤",
-                color: "#22C55E",
-                items: [
-                  { label: "ATM 提款後，將該筆交易分類改為「現金」", example: "" },
-                  { label: "圖表分析 → 銀行餘額 會自動累計現金欄位", example: "" },
-                  { label: "支出類型的現金分類 = 累加（提款進口袋）", example: "" },
-                  { label: "收入類型的現金分類 = 扣除（存回銀行）", example: "" },
-                ],
-                note: "現金欄位 = Σ(現金類型:支出) − Σ(現金類型:收入)，反映實際口袋現金。",
-              },
-              {
-                icon: "🏦",
-                title: "貸款管理",
-                color: "#F59E0B",
-                items: [
-                  { label: "進入「貸款管理」頁面新增貸款", example: "本金、利率、起始日" },
-                  { label: "記錄每月還款明細", example: "本金 + 利息分開記錄" },
-                  { label: "貸款餘額自動反映在淨資產計算", example: "" },
-                  { label: "累計已繳利息統計顯示在淨資產卡片", example: "" },
-                ],
-                note: "支援多筆貸款並行管理，狀態可切換為已結清。",
-              },
-              {
-                icon: "🏷️",
-                title: "分類管理",
-                color: "#06B6D4",
-                items: [
-                  { label: "預設分類", example: "飲食 / 交通 / 娛樂 / 購物 / 醫療 / 薪資 / 獎金 / 現金 / 其他" },
-                  { label: "AI 自動分類：LINE 傳入的記帳自動判斷", example: "" },
-                  { label: "手動修改：交易記錄中點擊分類標籤即可編輯", example: "" },
-                  { label: "新輸入的分類名稱會自動加入下拉選單", example: "" },
-                  { label: "··· 選單 → AI 重新分類 可批次重新判斷所有記錄", example: "" },
-                ],
-                note: "分類名稱沒有限制，直接輸入任意文字即可建立新分類。",
-              },
-              {
-                icon: "⚠️",
-                title: "通知中心",
-                color: "#EF4444",
-                items: [
-                  { label: "Header 右側鈴鐺圖示，點擊展開通知面板", example: "" },
-                  { label: "預算超標：分類已超標（🚨）或已用 80%+（⚠️）自動提示", example: "" },
-                  { label: "帳單到期：信用卡未繳帳單距截止日 ≤ 7 天自動提示", example: "" },
-                  { label: "儲蓄目標：截止日 90 天內且進度不足 80% 提醒", example: "" },
-                  { label: "Badge 數字 = 緊急 + 警告筆數合計", example: "" },
-                ],
-                note: "通知由系統即時運算，每次點開鈴鐺時自動從最新資料重新計算。",
-              },
-              {
-                icon: "📊",
-                title: "進階財務分析（Header 「進階分析」下拉）",
-                color: "#8B5CF6",
-                items: [
-                  { label: "年度財報 — 全年收支、12 月走勢、支出分類排行、月度明細", example: "" },
-                  { label: "退休金試算 — 輸入目標金額 + 月儲蓄 + 報酬率，推算達標年數", example: "" },
-                  { label: "FIRE 試算 — 4% 法則：月支出×300 = FI 目標，顯示距達標年數", example: "" },
-                  { label: "收入穩定性 — 過去 12 個月標準差、變異係數、月收入走勢圖", example: "" },
-                  { label: "固定 vs 變動支出 — 固定支出佔總支出比例、6 個月堆疊趨勢", example: "" },
-                  { label: "帳戶流量 — 各帳戶每月資金流入/流出，可篩選單一帳戶", example: "" },
-                  { label: "消費預測 — 依月中速率推算月底預計金額，超標分類自動標紅", example: "" },
-                ],
-                note: "進階分析均支援 Demo 模式（?demo=1）預覽，不需要真實資料。",
-              },
-              {
-                icon: "💰",
-                title: "負債管理強化",
-                color: "#F59E0B",
-                items: [
-                  { label: "還債優化建議：輸入每月可還款金額，比較雪球法 vs 雪崩法", example: "負債管理 Tab" },
-                  { label: "雪球法：從最小餘額開始還，心理激勵效果強", example: "" },
-                  { label: "雪崩法：從最高利率開始還，數學上利息最少", example: "" },
-                  { label: "收支損益平衡點：固定支出合計 → 最低收入需求 + 25% 安全緩衝", example: "" },
-                  { label: "損益平衡進度條：本月收入 vs 建議安全收入的視覺化比對", example: "" },
-                ],
-                note: "還清時間以複利模擬，信用卡利率預設 18%，可依實際利率調整。",
-              },
-            ].map(section => (
-              <Card key={section.title} className="p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="text-2xl">{section.icon}</span>
-                  <h3 className="text-[16px] font-bold" style={{ color: section.color }}>{section.title}</h3>
-                </div>
-                <div className="space-y-2 mb-3">
-                  {section.items.map((item, i) => (
-                    <div key={i} className="flex items-start gap-3">
-                      <span className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ backgroundColor: section.color }} />
-                      <span className="text-[14px] flex-1" style={{ color: "var(--text-primary)" }}>{item.label}</span>
-                      {item.example && (
-                        <span className="text-[14px] px-2 py-0.5 rounded-md font-mono flex-shrink-0"
-                          style={{ background: `${section.color}15`, color: section.color }}>
-                          {item.example}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                {section.note && (
-                  <p className="text-[14px] mt-3 pt-3 leading-relaxed" style={{ color: "var(--text-muted)", borderTop: "1px solid var(--border-inner)" }}>
-                    💡 {section.note}
-                  </p>
-                )}
-              </Card>
-            ))}
-          </div>
-        )}
+        {activeTab === "guide" && <UserGuide />}
+
+        {/* ── Duplicate Review ── */}
+        {activeTab === "duplicate-review" && <DuplicateReview />}
 
       </main>
+
+      {/* ── Split Transaction Modal ── */}
+      {splitModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+          onClick={e => { if (e.target === e.currentTarget) setSplitModal(null); }}>
+          <div className="w-full max-w-md rounded-2xl p-6 space-y-4"
+            style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 24px 60px rgba(0,0,0,0.4)" }}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-[16px] font-bold" style={{ color: "var(--text-primary)" }}>分割交易</h3>
+              <button onClick={() => setSplitModal(null)} className="text-xl leading-none hover:opacity-60 transition-opacity" style={{ color: "var(--text-muted)" }}>×</button>
+            </div>
+            {/* Original */}
+            <div className="rounded-xl px-4 py-3 flex items-center justify-between"
+              style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
+              <div>
+                <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>原始交易 · {splitModal.date}</p>
+                <p className="text-[14px] font-semibold mt-0.5" style={{ color: "var(--text-primary)" }}>{splitModal.note || splitModal.category}</p>
+              </div>
+              <p className="text-[18px] font-black" style={{ color: splitModal.type === "收入" ? "#10B981" : "#EF4444" }}>
+                NT$ {fmt(splitModal.amount)}
+              </p>
+            </div>
+            {/* Split parts */}
+            <div className="space-y-3">
+              {splitParts.map((part, i) => (
+                <div key={i} className="rounded-xl p-3 space-y-2" style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] font-bold" style={{ color: "var(--text-muted)" }}>分割 {i + 1}</span>
+                    {splitParts.length > 2 && (
+                      <button onClick={() => setSplitParts(p => p.filter((_, j) => j !== i))}
+                        className="text-[12px] hover:opacity-60" style={{ color: "var(--text-muted)" }}>移除</button>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <select value={part.category} onChange={e => setSplitParts(p => p.map((x, j) => j === i ? { ...x, category: e.target.value } : x))}
+                      className="flex-1 rounded-lg px-2 py-1.5 text-[13px] outline-none"
+                      style={{ background: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-primary)" }}>
+                      <option value="">選分類</option>
+                      {categories.map(c => <option key={c} value={c} style={{ background: "var(--bg-card)" }}>{c}</option>)}
+                    </select>
+                    <input type="number" min="0" placeholder="金額" value={part.amount}
+                      onChange={e => setSplitParts(p => p.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
+                      className="w-24 rounded-lg px-2 py-1.5 text-[13px] outline-none"
+                      style={{ background: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-primary)" }} />
+                  </div>
+                  <input type="text" placeholder="備註（選填）" value={part.note}
+                    onChange={e => setSplitParts(p => p.map((x, j) => j === i ? { ...x, note: e.target.value } : x))}
+                    className="w-full rounded-lg px-2 py-1.5 text-[13px] outline-none"
+                    style={{ background: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-primary)" }} />
+                </div>
+              ))}
+            </div>
+            {/* Sum check */}
+            {(() => {
+              const sum = splitParts.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+              const diff = Math.abs(sum - splitModal.amount);
+              return (
+                <div className="flex items-center justify-between text-[13px] px-1">
+                  <span style={{ color: "var(--text-muted)" }}>合計</span>
+                  <span className="font-bold" style={{ color: diff > 0.5 ? "#EF4444" : "#10B981" }}>
+                    NT$ {fmt(sum)}{diff > 0.5 ? ` (差 ${fmt(diff)})` : " ✓"}
+                  </span>
+                </div>
+              );
+            })()}
+            <button onClick={() => setSplitParts(p => [...p, { category: splitModal.category, amount: "", note: "" }])}
+              className="text-[13px] w-full py-1.5 rounded-lg transition-all"
+              style={{ background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border-inner)" }}>
+              + 新增分割項目
+            </button>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setSplitModal(null)}
+                className="flex-1 py-2.5 rounded-xl text-[14px] font-semibold hover:opacity-70 transition-opacity"
+                style={{ border: "1px solid var(--border)", color: "var(--text-sub)" }}>取消</button>
+              <button onClick={saveSplit} disabled={splitSaving}
+                className="flex-1 py-2.5 rounded-xl text-[14px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                style={{ background: "var(--btn-gradient)" }}>
+                {splitSaving ? "分割中…" : "確認分割"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Merge Transactions Modal ── */}
+      {mergeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+          onClick={e => { if (e.target === e.currentTarget) setMergeModal(false); }}>
+          <div className="w-full max-w-sm rounded-2xl p-6 space-y-4"
+            style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 24px 60px rgba(0,0,0,0.4)" }}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-[16px] font-bold" style={{ color: "var(--text-primary)" }}>合併 {selectedIds.size} 筆交易</h3>
+              <button onClick={() => setMergeModal(false)} className="text-xl leading-none hover:opacity-60 transition-opacity" style={{ color: "var(--text-muted)" }}>×</button>
+            </div>
+            <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
+              將選取的 {selectedIds.size} 筆合併為一筆，金額加總，以最早日期為準。原始紀錄將被刪除。
+            </p>
+            <div>
+              <label className="text-[14px] font-medium mb-1 block" style={{ color: "var(--text-sub)" }}>合併後分類</label>
+              <select value={mergeForm.category} onChange={e => setMergeForm(f => ({ ...f, category: e.target.value }))}
+                className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-primary)" }}>
+                <option value="">請選擇分類</option>
+                {categories.map(c => <option key={c} value={c} style={{ background: "var(--bg-card)" }}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[14px] font-medium mb-1 block" style={{ color: "var(--text-sub)" }}>備註（選填）</label>
+              <input type="text" placeholder="合併後的說明…" value={mergeForm.note}
+                onChange={e => setMergeForm(f => ({ ...f, note: e.target.value }))}
+                className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-primary)" }} />
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setMergeModal(false)}
+                className="flex-1 py-2.5 rounded-xl text-[14px] font-semibold hover:opacity-70 transition-opacity"
+                style={{ border: "1px solid var(--border)", color: "var(--text-sub)" }}>取消</button>
+              <button onClick={saveMerge} disabled={mergeSaving || !mergeForm.category}
+                className="flex-1 py-2.5 rounded-xl text-[14px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                style={{ background: "linear-gradient(135deg,#92400E,#F59E0B)" }}>
+                {mergeSaving ? "合併中…" : "確認合併"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Add Transaction Modal ── */}
       {addModal && (
@@ -3864,7 +4482,8 @@ export default function DashboardPage() {
             {/* Note */}
             <div>
               <label className="text-[14px] font-medium mb-1 block" style={{ color: "var(--text-sub)" }}>備註（選填）</label>
-              <input type="text" placeholder="說明用途…" value={addForm.note}
+              <NoteTemplatePicker onSelect={note => setAddForm(f => ({ ...f, note }))} />
+              <input type="text" placeholder="說明用途，或點擊上方模板快速填入…" value={addForm.note}
                 onChange={e => setAddForm(f => ({ ...f, note: e.target.value }))}
                 onKeyDown={e => { if (e.key === "Enter") saveManualTx(); }}
                 className="w-full rounded-xl px-3 py-2 text-sm outline-none"

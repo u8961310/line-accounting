@@ -55,7 +55,15 @@ export function detectSource(headers: string[]): BankSource {
     return "sinopac_bank";
   }
 
-  // 永豐信用卡 — 已有 sinopac_cc，透過 AI fallback 處理
-  // 凱基存款 — 格式不定，交由 AI fallback 處理
+  // 凱基銀行存款 — 固定寬度文字，parseKgiText 產生的欄位：交易日期, 摘要, 支出, 存入, 結餘
+  if (
+    normalized.some((h) => h === "交易日期") &&
+    normalized.some((h) => h === "結餘") &&
+    normalized.some((h) => h === "摘要")
+  ) {
+    return "kgi_bank";
+  }
+
+  // 永豐信用卡 — AI fallback 處理
   return "unknown";
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { DEMO_LOANS_RAW, DEMO_CREDIT_CARDS_RAW } from "@/lib/demo-data";
 
 interface LoanPayment {
   id: string;
@@ -139,7 +140,7 @@ const inputClass =
   + " bg-[var(--bg-input)] border border-[var(--border)] focus:border-[var(--accent)]"
   + " text-[var(--text-primary)] placeholder-[var(--text-muted)]";
 
-const labelClass = "text-[12px] font-medium mb-1 block text-[var(--text-sub)]";
+const labelClass = "text-[14px] font-medium mb-1 block text-[var(--text-sub)]";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   active:   { label: "還款中", color: "#F59E0B" },
@@ -169,7 +170,7 @@ function ModalHeader({ title, sub, onClose }: { title: string; sub?: string; onC
     <div className="px-6 pt-6 pb-4 flex items-start justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
       <div>
         <p className="text-[17px] font-bold text-[var(--text-primary)]">{title}</p>
-        {sub && <p className="text-[12px] mt-0.5" style={{ color: "var(--text-sub)" }}>{sub}</p>}
+        {sub && <p className="text-[14px] mt-0.5" style={{ color: "var(--text-sub)" }}>{sub}</p>}
       </div>
       <button onClick={onClose} className="text-xl leading-none ml-4 hover:opacity-60 transition-opacity" style={{ color: "var(--text-sub)" }}>×</button>
     </div>
@@ -185,7 +186,7 @@ function ModalFooter({ onCancel, onConfirm, confirmLabel }: { onCancel: () => vo
   );
 }
 
-export default function LoanManager() {
+export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
   const [loans, setLoans] = useState<LoanItem[]>([]);
   const [creditCards, setCreditCards] = useState<CreditCardItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -236,6 +237,11 @@ export default function LoanManager() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      if (isDemo) {
+        setLoans((DEMO_LOANS_RAW as RawLoan[]).map(parseLoan));
+        setCreditCards((DEMO_CREDIT_CARDS_RAW as RawCreditCard[]).map(parseCreditCard));
+        return;
+      }
       const [lRes, cRes] = await Promise.all([
         fetch("/api/loans"),
         fetch("/api/credit-cards"),
@@ -249,7 +255,7 @@ export default function LoanManager() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isDemo]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -428,14 +434,98 @@ export default function LoanManager() {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-16">
-        <div className="w-7 h-7 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "var(--accent)", borderTopColor: "transparent" }} />
+      <div className="space-y-4">
+        <div className="grid grid-cols-3 gap-3">
+          {[1,2,3].map(i => (
+            <div key={i} className="rounded-2xl px-4 py-4 animate-pulse" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+              <div className="h-3 w-16 rounded mb-2" style={{ background: "var(--border-inner)" }} />
+              <div className="h-6 w-24 rounded" style={{ background: "var(--border-inner)" }} />
+            </div>
+          ))}
+        </div>
+        <div className="rounded-2xl p-6 animate-pulse" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+          <div className="h-4 w-32 rounded mb-3" style={{ background: "var(--border-inner)" }} />
+          <div className="h-24 rounded-xl" style={{ background: "var(--bg-input)" }} />
+        </div>
       </div>
     );
   }
 
+  // ── Derived summary values ──────────────────────────────────────────────────
+  const totalLoanDebt    = loans.filter(l => l.status === "active").reduce((s, l) => s + l.remainingPrincipal, 0);
+  const totalCreditDebt  = creditCards.reduce((s, c) => s + c.currentBalance, 0);
+  const totalMonthlyBurden = loans.filter(l => l.status === "active").reduce((s, l) => {
+    const lastPay = l.payments[0];
+    return s + (lastPay ? lastPay.totalPaid : 0);
+  }, 0);
+  const today = new Date();
+  // 最低應繳已達到 → 不列為待繳（部分繳但達最低視為已繳）
+  const isMinPaid = (b: { status: string; paidAmount: number; minimumPayment: number | null }) =>
+    b.status !== "paid" && b.minimumPayment != null && b.paidAmount >= b.minimumPayment;
+  const urgentBills = creditCards.flatMap(c => c.bills.filter(b => b.status !== "paid" && !isMinPaid(b)))
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+  const nextBill = urgentBills[0] ?? null;
+  const nextBillDays = nextBill ? Math.ceil((new Date(nextBill.dueDate).getTime() - today.getTime()) / 86400000) : null;
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+
+      {/* ── 負債概覽 summary cards ── */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: "貸款總餘額",   value: totalLoanDebt,      color: "#F87171", sub: `${loans.filter(l => l.status === "active").length} 筆還款中` },
+          { label: "信用卡未繳",   value: totalCreditDebt,    color: "#F59E0B", sub: nextBillDays !== null ? `最近到期 ${nextBillDays <= 0 ? "已逾期" : `${nextBillDays} 天後`}` : "無待繳帳單" },
+          { label: "月還款負擔",   value: totalMonthlyBurden, color: "#A78BFA", sub: "依最後一筆還款估算" },
+        ].map(item => (
+          <div key={item.label} className="rounded-2xl px-4 py-4"
+            style={{ background: "var(--bg-card)", border: `1px solid ${item.color}25`, boxShadow: "var(--card-shadow)" }}>
+            <p className="text-[14px] font-semibold mb-2 tracking-wide" style={{ color: item.color + "CC" }}>{item.label}</p>
+            <p className="text-[20px] font-black tabular-nums leading-none" style={{ color: item.value > 0 ? item.color : "var(--text-muted)" }}>
+              NT$ {item.value.toLocaleString("zh-TW", { maximumFractionDigits: 0 })}
+            </p>
+            <p className="text-[14px] mt-1.5" style={{ color: "var(--text-muted)" }}>{item.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ── 緊急帳單警示 ── */}
+      {urgentBills.length > 0 && (() => {
+        const overdue  = urgentBills.filter(b => nextBillDays !== null && Math.ceil((new Date(b.dueDate).getTime() - today.getTime()) / 86400000) <= 0);
+        const soonBills = urgentBills.filter(b => {
+          const d = Math.ceil((new Date(b.dueDate).getTime() - today.getTime()) / 86400000);
+          return d > 0 && d <= 7;
+        });
+        if (overdue.length === 0 && soonBills.length === 0) return null;
+        return (
+          <div className="space-y-2">
+            {overdue.map(b => (
+              <div key={b.id} className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)" }}>
+                <span className="text-[18px] flex-shrink-0">🚨</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] font-bold" style={{ color: "#F87171" }}>帳單已逾期</p>
+                  <p className="text-[14px] mt-0.5" style={{ color: "rgba(248,113,113,0.8)" }}>截止日 {b.dueDate.slice(0,10)}</p>
+                </div>
+                <p className="text-[16px] font-black tabular-nums flex-shrink-0" style={{ color: "#EF4444" }}>NT$ {fmt(b.totalAmount - b.paidAmount)}</p>
+              </div>
+            ))}
+            {soonBills.map(b => {
+              const daysLeft = Math.ceil((new Date(b.dueDate).getTime() - today.getTime()) / 86400000);
+              return (
+                <div key={b.id} className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                  style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)" }}>
+                  <span className="text-[18px] flex-shrink-0">⚡</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] font-bold" style={{ color: "#F59E0B" }}>{daysLeft} 天後到期</p>
+                    <p className="text-[14px] mt-0.5" style={{ color: "rgba(245,158,11,0.8)" }}>截止日 {b.dueDate.slice(0,10)}</p>
+                  </div>
+                  <p className="text-[16px] font-black tabular-nums flex-shrink-0" style={{ color: "#F59E0B" }}>NT$ {fmt(b.totalAmount - b.paidAmount)}</p>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* ── Inner tab: 貸款 / 信用卡 ── */}
       <div className="flex items-center justify-between">
@@ -447,7 +537,7 @@ export default function LoanManager() {
                 ? { background: "var(--btn-gradient)", color: "#fff" }
                 : { color: "var(--text-sub)" }}>
               {label}
-              <span className="ml-1.5 text-[11px] font-bold px-1.5 py-0.5 rounded-full"
+              <span className="ml-1.5 text-[14px] font-bold px-1.5 py-0.5 rounded-full"
                 style={{ background: loanTab === id ? "rgba(255,255,255,0.2)" : "var(--border-inner)", color: loanTab === id ? "#fff" : "var(--text-sub)" }}>
                 {id === "loans" ? loans.length : creditCards.length}
               </span>
@@ -456,7 +546,7 @@ export default function LoanManager() {
         </div>
         <button
           onClick={() => loanTab === "loans" ? setShowAddLoan(true) : setShowAddCard(true)}
-          className="px-4 py-2 rounded-xl text-[13px] font-semibold text-white"
+          className="px-4 py-2 rounded-xl text-[14px] font-semibold text-white"
           style={{ background: "var(--btn-gradient)", boxShadow: "0 0 12px rgba(59,130,246,0.3)" }}>
           + 新增{loanTab === "loans" ? "貸款" : "信用卡"}
         </button>
@@ -483,12 +573,12 @@ export default function LoanManager() {
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[19px] font-bold text-[var(--text-primary)]">{loan.name}</span>
-                          <span className="text-[12px] font-semibold px-2.5 py-0.5 rounded-full"
+                          <span className="text-[14px] font-semibold px-2.5 py-0.5 rounded-full"
                             style={{ color: statusInfo.color, background: statusInfo.color + "20" }}>{statusInfo.label}</span>
                         </div>
                         <div className="text-right flex-shrink-0">
                           <p className="text-[26px] font-black leading-none" style={{ color: "#F87171" }}>NT$ {fmt(loan.remainingPrincipal)}</p>
-                          <p className="text-[12px] mt-1" style={{ color: "var(--text-muted)" }}>原始 NT$ {fmt(loan.originalPrincipal)}</p>
+                          <p className="text-[14px] mt-1" style={{ color: "var(--text-muted)" }}>原始 NT$ {fmt(loan.originalPrincipal)}</p>
                         </div>
                       </div>
 
@@ -498,38 +588,53 @@ export default function LoanManager() {
                         <span style={{ color: "var(--text-muted)" }}>·</span>
                         <span className="text-[14px]" style={{ color: "var(--text-sub)" }}>{loan.type}</span>
                         {loan.interestRate > 0 && (
-                          <span className="text-[12px] font-semibold px-2 py-0.5 rounded"
+                          <span className="text-[14px] font-semibold px-2 py-0.5 rounded"
                             style={{ background: "var(--border-inner)", color: "var(--accent-light)" }}>
                             年利率 {loan.interestRate}%
                           </span>
                         )}
                       </div>
 
-                      {/* Row 3: 3 key info chips — always visible */}
-                      <div className="grid grid-cols-3 gap-2 mb-4">
-                        <div className="rounded-xl px-3 py-3 text-center" style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
-                          <p className="text-[11px] font-medium mb-1.5 tracking-wide" style={{ color: "var(--text-muted)" }}>還款日</p>
-                          <p className="text-[15px] font-bold text-[var(--text-primary)]">
-                            {loan.paymentDay ? `每月 ${loan.paymentDay} 日` : "—"}
-                          </p>
-                        </div>
-                        <div className="rounded-xl px-3 py-3 text-center" style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
-                          <p className="text-[11px] font-medium mb-1.5 tracking-wide" style={{ color: "var(--text-muted)" }}>到期日</p>
-                          <p className="text-[15px] font-bold text-[var(--text-primary)]">
-                            {loan.endDate ? loan.endDate.slice(0, 10) : "—"}
-                          </p>
-                        </div>
-                        <div className="rounded-xl px-3 py-3 text-center" style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
-                          <p className="text-[11px] font-medium mb-1.5 tracking-wide" style={{ color: "var(--text-muted)" }}>月利息估計</p>
-                          <p className="text-[15px] font-bold" style={{ color: "#F87171" }}>
-                            NT$ {fmt2(monthlyInterest)}
-                          </p>
-                        </div>
-                      </div>
+                      {/* Row 3: 2 key info chips */}
+                      {(() => {
+                        const now = new Date();
+                        const thisMonth = loan.paymentDay
+                          ? new Date(now.getFullYear(), now.getMonth(), loan.paymentDay)
+                          : null;
+                        if (thisMonth && thisMonth < now) thisMonth?.setMonth(thisMonth.getMonth() + 1);
+                        const daysLeft = thisMonth ? Math.ceil((thisMonth.getTime() - now.getTime()) / 86400000) : null;
+                        const daysColor = daysLeft === null ? "var(--text-muted)"
+                          : daysLeft <= 3 ? "#EF4444" : daysLeft <= 7 ? "#F59E0B" : "#10B981";
+                        return (
+                          <div className="flex items-center gap-2 mb-4 flex-wrap">
+                            <div className="flex items-center gap-1.5 rounded-xl px-3 py-2"
+                              style={{ background: "var(--bg-input)", border: `1px solid ${daysColor}30` }}>
+                              <span className="text-[14px]" style={{ color: "var(--text-muted)" }}>
+                                {loan.paymentDay ? `每月 ${loan.paymentDay} 日` : "還款日未設定"}
+                              </span>
+                              {daysLeft !== null && (
+                                <>
+                                  <span style={{ color: "var(--border-inner)" }}>·</span>
+                                  <span className="text-[14px] font-bold tabular-nums" style={{ color: daysColor }}>
+                                    {daysLeft <= 0 ? "今日繳款" : `${daysLeft} 天後`}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 rounded-xl px-3 py-2"
+                              style={{ background: "var(--bg-input)", border: "1px solid rgba(248,113,113,0.2)" }}>
+                              <span className="text-[14px]" style={{ color: "var(--text-muted)" }}>月利息</span>
+                              <span className="text-[14px] font-bold tabular-nums" style={{ color: "#F87171" }}>
+                                NT$ {fmt2(monthlyInterest)}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Progress bar */}
                       <div className="mb-1">
-                        <div className="flex justify-between text-[12px] mb-1.5" style={{ color: "var(--text-muted)" }}>
+                        <div className="flex justify-between text-[14px] mb-1.5" style={{ color: "var(--text-muted)" }}>
                           <span>已還 NT$ {fmt(loan.originalPrincipal - loan.remainingPrincipal)}</span>
                           <span>{Math.round((1 - progress) * 100)}%</span>
                         </div>
@@ -537,46 +642,80 @@ export default function LoanManager() {
                           <div className="h-full rounded-full transition-all"
                             style={{ width: `${Math.min((1 - progress) * 100, 100)}%`, background: "linear-gradient(90deg,#EF4444,#F87171)", boxShadow: "0 0 8px rgba(239,68,68,0.3)" }} />
                         </div>
+                        {/* Estimated payoff date */}
+                        {loan.remainingPrincipal > 0 && (() => {
+                          let payoffLabel: string | null = null;
+                          let diffMonths = 0;
+                          if (loan.endDate) {
+                            const d = new Date(loan.endDate);
+                            const now = new Date();
+                            diffMonths = (d.getFullYear() - now.getFullYear()) * 12 + (d.getMonth() - now.getMonth());
+                            payoffLabel = `${d.getFullYear()}/${d.getMonth() + 1} 還清`;
+                          } else if (loan.payments.length >= 2) {
+                            const sorted = [...loan.payments].sort((a, b) => a.paymentDate.localeCompare(b.paymentDate));
+                            const avgPrincipal = sorted.reduce((s, p) => s + p.principalPaid, 0) / sorted.length;
+                            if (avgPrincipal > 0) {
+                              diffMonths = Math.ceil(loan.remainingPrincipal / avgPrincipal);
+                              const payoff = new Date();
+                              payoff.setMonth(payoff.getMonth() + diffMonths);
+                              payoffLabel = `預計 ${payoff.getFullYear()}/${payoff.getMonth() + 1} 還清（約 ${diffMonths} 個月）`;
+                            }
+                          }
+                          if (!payoffLabel) return null;
+                          const color = diffMonths <= 6 ? "#10B981"
+                            : diffMonths <= 24 ? "#F59E0B"
+                            : "#94A3B8";
+                          return (
+                            <div className="flex justify-end mt-2">
+                              <span className="inline-flex items-center gap-1.5 text-[14px] font-bold px-2.5 py-1 rounded-full"
+                                style={{ color, background: color + "18", border: `1px solid ${color}40` }}>
+                                🏁 {payoffLabel}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 
                     {/* ── Action row + expand toggle ── */}
                     <div className="px-6 py-3 flex items-center gap-2" style={{ borderTop: "1px solid var(--border-inner)" }}>
                       <button onClick={() => openPaymentModal(loan)}
-                        className="px-4 py-2 rounded-lg text-[13px] font-semibold text-white transition-opacity hover:opacity-80"
-                        style={{ background: "var(--btn-gradient)" }}>記錄還款</button>
-                      <button onClick={() => handleDeleteLoan(loan.id)}
-                        className="px-4 py-2 rounded-lg text-[13px] font-semibold transition-opacity hover:opacity-80"
-                        style={{ border: "1px solid var(--border)", color: "#EF4444" }}>刪除</button>
+                        className="px-4 py-2 rounded-lg text-[14px] font-semibold text-white transition-opacity hover:opacity-80"
+                        style={{ background: "var(--btn-gradient)", boxShadow: "0 0 10px rgba(59,130,246,0.25)" }}>
+                        💳 記錄還款
+                      </button>
                       <div className="flex-1" />
                       <button onClick={() => toggleLoanHistory(loan.id)}
-                        className="text-[13px] font-semibold px-3 py-2 rounded-lg transition-colors"
-                        style={{ color: "var(--text-sub)", background: "var(--bg-input)" }}>
-                        {isExpanded ? "▲ 收起還款記錄" : "▼ 還款記錄"}
+                        className="text-[14px] font-medium px-3 py-1.5 rounded-lg transition-colors"
+                        style={{ color: "var(--text-muted)", background: "var(--bg-input)" }}>
+                        {isExpanded ? "▲ 收起" : "▼ 記錄"}
                       </button>
+                      <button onClick={() => handleDeleteLoan(loan.id)}
+                        className="text-[14px] px-2.5 py-1.5 rounded-lg transition-opacity hover:opacity-80"
+                        style={{ color: "#EF444480", border: "1px solid #EF444420" }}>刪除</button>
                     </div>
 
                     {/* ── Expanded: payment history ── */}
                     {isExpanded && selectedLoanPayments.length > 0 && (
                       <div className="px-5 pb-4 space-y-2" style={{ borderTop: "1px solid var(--border-inner)" }}>
-                        <p className="text-[11px] font-bold tracking-widest uppercase pt-3" style={{ color: "var(--accent)" }}>還款記錄</p>
+                        <p className="text-[14px] font-bold tracking-widest uppercase pt-3" style={{ color: "var(--accent)" }}>還款記錄</p>
                         {selectedLoanPayments.slice(0, 5).map(p => (
                           <div key={p.id} className="flex items-center justify-between rounded-xl px-4 py-2.5"
                             style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
                             <div>
-                              <p className="text-[13px] font-medium text-[var(--text-primary)]">{p.paymentDate.slice(0, 10)}</p>
-                              <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>本金 {fmt(p.principalPaid)} · 利息 {fmt(p.interestPaid)}</p>
+                              <p className="text-[14px] font-medium text-[var(--text-primary)]">{p.paymentDate.slice(0, 10)}</p>
+                              <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>本金 {fmt(p.principalPaid)} · 利息 {fmt(p.interestPaid)}</p>
                             </div>
                             <div className="text-right">
                               <p className="text-[14px] font-bold" style={{ color: "var(--accent-light)" }}>NT$ {fmt(p.totalPaid)}</p>
-                              <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>餘 {fmt(p.remainingPrincipal)}</p>
+                              <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>餘 {fmt(p.remainingPrincipal)}</p>
                             </div>
                           </div>
                         ))}
                       </div>
                     )}
                     {isExpanded && selectedLoanPayments.length === 0 && (
-                      <p className="px-5 pb-4 pt-3 text-[12px]" style={{ color: "var(--text-muted)" }}>尚無還款記錄</p>
+                      <p className="px-5 pb-4 pt-3 text-[14px]" style={{ color: "var(--text-muted)" }}>尚無還款記錄</p>
                     )}
                   </div>
                 );
@@ -593,52 +732,83 @@ export default function LoanManager() {
           : <div className="space-y-3">
               {creditCards.map(card => {
                 const isExpanded = expandedLoanId === card.id;
+                const utilPct = card.creditLimit && card.creditLimit > 0
+                  ? Math.min((card.currentBalance / card.creditLimit) * 100, 100) : null;
+                const utilColor = utilPct === null ? "#F59E0B"
+                  : utilPct >= 80 ? "#EF4444" : utilPct >= 50 ? "#F59E0B" : "#10B981";
+                const unpaidBills = card.bills.filter(b => b.status !== "paid" && !isMinPaid(b));
+                const nextDue = unpaidBills.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0];
+                const dueDays = nextDue ? Math.ceil((new Date(nextDue.dueDate).getTime() - today.getTime()) / 86400000) : null;
+                const dueColor = dueDays === null ? "var(--text-muted)"
+                  : dueDays <= 0 ? "#EF4444" : dueDays <= 3 ? "#EF4444" : dueDays <= 7 ? "#F59E0B" : "#10B981";
                 return (
-                  <div key={card.id} className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                    <button className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-white/[0.02] transition-colors"
+                  <div key={card.id} className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-card)", border: `1px solid ${utilColor}25` }}>
+                    <button className="w-full px-5 pt-5 pb-4 flex items-start gap-4 text-left hover:bg-white/[0.02] transition-colors"
                       onClick={() => setExpandedLoanId(isExpanded ? null : card.id)}>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[15px] font-bold text-[var(--text-primary)] mb-1">{card.name}</p>
-                        <div className="flex items-center gap-3 text-[12px]" style={{ color: "var(--text-sub)" }}>
-                          <span>{card.bank}</span>
-                          {card.creditLimit && <span>額度 NT$ {fmt(card.creditLimit)}</span>}
-                          {card.statementDay && <span>帳單日 {card.statementDay}日</span>}
+                        {/* Row 1: name + bank */}
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-[16px] font-bold text-[var(--text-primary)]">{card.name}</p>
+                          <span className="text-[14px] px-2 py-0.5 rounded-full font-medium" style={{ background: "var(--bg-input)", color: "var(--text-sub)" }}>{card.bank}</span>
                         </div>
+                        {/* Row 2: 額度使用率 bar */}
+                        {utilPct !== null && (
+                          <div className="mb-2">
+                            <div className="flex justify-between text-[14px] mb-1">
+                              <span style={{ color: "var(--text-muted)" }}>額度使用 {utilPct.toFixed(0)}%</span>
+                              <span style={{ color: "var(--text-muted)" }}>NT$ {fmt(card.creditLimit!)} 額度</span>
+                            </div>
+                            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--bg-input)" }}>
+                              <div className="h-full rounded-full" style={{ width: `${utilPct}%`, background: utilColor }} />
+                            </div>
+                          </div>
+                        )}
+                        {/* Row 3: next due */}
+                        {nextDue && (
+                          <p className="text-[14px] font-semibold" style={{ color: dueColor }}>
+                            {dueDays !== null && dueDays <= 0 ? "⚠ 帳單已逾期" : dueDays !== null && dueDays <= 7 ? `⚡ ${dueDays} 天後到期` : `帳單截止 ${nextDue.dueDate.slice(0, 10)}`}
+                            <span className="ml-1 font-bold">· NT$ {fmt(nextDue.totalAmount - nextDue.paidAmount)}</span>
+                          </p>
+                        )}
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className="text-[20px] font-black" style={{ color: "#F59E0B" }}>NT$ {fmt(card.currentBalance)}</p>
-                        <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>未繳餘額</p>
+                        <p className="text-[22px] font-black tabular-nums" style={{ color: "#F59E0B" }}>NT$ {fmt(card.currentBalance)}</p>
+                        <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>未繳餘額</p>
                       </div>
-                      <span className="text-slate-600 text-lg">{isExpanded ? "▲" : "▼"}</span>
+                      <span className="text-[var(--text-muted)] text-base mt-1">{isExpanded ? "▲" : "▼"}</span>
                     </button>
 
                     {isExpanded && (
                       <div className="px-5 pb-4 space-y-3" style={{ borderTop: "1px solid var(--border-inner)" }}>
                         {card.bills.length > 0 && (
                           <div className="space-y-2 pt-3">
-                            <p className="text-[11px] font-bold tracking-widest uppercase" style={{ color: "#F59E0B" }}>帳單記錄</p>
+                            <p className="text-[14px] font-bold tracking-widest uppercase" style={{ color: "#F59E0B" }}>帳單記錄</p>
                             {card.bills.map(bill => {
-                              const bs = BILL_STATUS[bill.status] ?? { label: bill.status, color: "#94A3B8" };
-                              const canPay = bill.status === "unpaid" || bill.status === "partial";
+                              const minPaidBill = isMinPaid(bill);
+                              const bs = minPaidBill
+                                ? { label: "最低已繳", color: "#10B981" }
+                                : (BILL_STATUS[bill.status] ?? { label: bill.status, color: "#94A3B8" });
+                              const canPay = bill.status !== "paid";
                               return (
                                 <div key={bill.id} className="rounded-xl px-4 py-3" style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
                                   <div className="flex items-center justify-between mb-1">
-                                    <span className="text-[13px] font-semibold text-[var(--text-primary)]">{bill.billingMonth}</span>
+                                    <span className="text-[14px] font-semibold text-[var(--text-primary)]">{bill.billingMonth}</span>
                                     <div className="flex items-center gap-2">
-                                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: bs.color, background: bs.color + "20" }}>{bs.label}</span>
+                                      <span className="text-[14px] font-bold px-2 py-0.5 rounded-full" style={{ color: bs.color, background: bs.color + "20" }}>{bs.label}</span>
                                       <span className="text-[15px] font-bold text-[var(--text-primary)]">NT$ {fmt(bill.totalAmount)}</span>
                                     </div>
                                   </div>
                                   <div className="flex items-center justify-between">
-                                    <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                                    <span className="text-[14px]" style={{ color: "var(--text-muted)" }}>
                                       截止 {bill.dueDate.slice(0, 10)}{bill.minimumPayment ? ` · 最低 NT$ ${fmt(bill.minimumPayment)}` : ""}
                                     </span>
-                                    {bill.paidAmount > 0 && <span className="text-[11px]" style={{ color: "#10B981" }}>已繳 NT$ {fmt(bill.paidAmount)}</span>}
+                                    {bill.paidAmount > 0 && <span className="text-[14px]" style={{ color: "#10B981" }}>已繳 NT$ {fmt(bill.paidAmount)}</span>}
                                   </div>
                                   {canPay && (
                                     <button onClick={() => { setSelectedBillForPayment({ cardId: card.id, bill }); setBillPayForm({ paidAmount: String(bill.totalAmount - bill.paidAmount), paidDate: new Date().toISOString().split("T")[0] }); }}
-                                      className="mt-2 text-[12px] font-semibold" style={{ color: "var(--accent)" }}>
-                                      記錄繳款 →
+                                      className="mt-2 text-[14px] font-semibold px-3 py-1 rounded-lg transition-opacity hover:opacity-80"
+                                      style={{ background: "var(--accent)", color: "#fff" }}>
+                                      記錄繳款
                                     </button>
                                   )}
                                 </div>
@@ -647,9 +817,9 @@ export default function LoanManager() {
                           </div>
                         )}
                         <button onClick={() => { setSelectedCardForBill(card); setBillForm({ billingMonth: "", totalAmount: "", minimumPayment: "", dueDate: "", paidAmount: "0", paidDate: "" }); }}
-                          className="px-4 py-2 rounded-xl text-[13px] font-semibold text-white"
-                          style={{ background: "linear-gradient(135deg,#78350F,#F59E0B)" }}>
-                          記錄帳單
+                          className="px-4 py-2 rounded-xl text-[14px] font-semibold text-white transition-opacity hover:opacity-80"
+                          style={{ background: "linear-gradient(135deg,#78350F,#F59E0B)", boxShadow: "0 0 10px rgba(245,158,11,0.2)" }}>
+                          📋 記錄帳單
                         </button>
                       </div>
                     )}
@@ -682,17 +852,20 @@ export default function LoanManager() {
             </div>
             <div>
               <label className={labelClass}>原始貸款金額 *</label>
-              <input className={inputClass} type="number" placeholder="500000" value={loanForm.originalPrincipal}
+              <input className={inputClass} type="number" placeholder="500000" min="0" value={loanForm.originalPrincipal}
+                onWheel={e => e.currentTarget.blur()}
                 onChange={e => setLoanForm(f => ({ ...f, originalPrincipal: e.target.value }))} />
             </div>
             <div>
               <label className={labelClass}>目前剩餘本金（留空同原始金額）</label>
-              <input className={inputClass} type="number" value={loanForm.remainingPrincipal}
+              <input className={inputClass} type="number" min="0" value={loanForm.remainingPrincipal}
+                onWheel={e => e.currentTarget.blur()}
                 onChange={e => setLoanForm(f => ({ ...f, remainingPrincipal: e.target.value }))} />
             </div>
             <div>
               <label className={labelClass}>年利率 % <span className="text-slate-600">（選填）</span></label>
-              <input className={inputClass} type="number" step="0.01" placeholder="9.88" value={loanForm.interestRate}
+              <input className={inputClass} type="number" step="0.01" min="0" placeholder="9.88" value={loanForm.interestRate}
+                onWheel={e => e.currentTarget.blur()}
                 onChange={e => setLoanForm(f => ({ ...f, interestRate: e.target.value }))} />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -704,7 +877,7 @@ export default function LoanManager() {
               <div>
                 <label className={labelClass}>到期日 <span className="text-slate-600">（選填）</span></label>
                 <input className={inputClass} type="date" value={loanForm.endDate ?? ""}
-                  onChange={e => setLoanForm(f => ({ ...f, endDate: e.target.value || null }))} />
+                  onChange={e => setLoanForm(f => ({ ...f, endDate: e.target.value }))} />
               </div>
             </div>
             <div>
@@ -723,7 +896,7 @@ export default function LoanManager() {
           <div className="px-6 py-5 space-y-4">
             {selectedLoan.remainingPrincipal === 0 && (
               <div className="rounded-xl px-4 py-3" style={{ background: "#1C0A00", border: "1px solid #92400E" }}>
-                <p className="text-[13px]" style={{ color: "#FCD34D" }}>本金已還清，本次還款全額計為利息</p>
+                <p className="text-[14px]" style={{ color: "#FCD34D" }}>本金已還清，本次還款全額計為利息</p>
               </div>
             )}
             <div>
@@ -750,7 +923,7 @@ export default function LoanManager() {
                     onChange={e => setPaymentForm(f => ({ ...f, interestPaid: e.target.value }))} />
                 </div>
                 <div className="rounded-xl px-4 py-3 flex items-center justify-between" style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
-                  <span className="text-[13px]" style={{ color: "var(--text-sub)" }}>其中本金</span>
+                  <span className="text-[14px]" style={{ color: "var(--text-sub)" }}>其中本金</span>
                   <span className="text-[15px] font-bold text-[var(--text-primary)]">NT$ {fmt2(Math.max(0, (parseFloat(paymentForm.totalPaid) || 0) - (parseFloat(paymentForm.interestPaid) || 0)))}</span>
                 </div>
               </>

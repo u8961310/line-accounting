@@ -7,21 +7,34 @@ import { ctbcBankAdapter } from "./adapters/ctbc_bank";
 import { megaBankAdapter } from "./adapters/mega_bank";
 import { yuantaBankAdapter } from "./adapters/yuanta_bank";
 import { sinopacBankAdapter } from "./adapters/sinopac_bank";
+import { kgiBankAdapter, isKgiBankText, parseKgiText } from "./adapters/kgi_bank";
+import { cathayBankAdapter } from "./adapters/cathay_bank";
+import { tbankAdapter } from "./adapters/tbank";
+import { cathayCcAdapter } from "./adapters/cathay_cc";
+import { esunCcAdapter } from "./adapters/esun_cc";
+import { ctbcCcAdapter } from "./adapters/ctbc_cc";
+import { taishinCcAdapter } from "./adapters/taishin_cc";
 import { createAiFallbackAdapter, parseWithAiFallback } from "./adapters/ai_fallback";
 import { parseXls } from "./xls";
 import { batchCategorize } from "./categorizer";
 import { prisma } from "../db";
 
-const ADAPTERS: Record<Exclude<BankSource, "unknown" | "sinopac_cc" | "kgi_bank">, CsvAdapter> = {
+const ADAPTERS: Record<Exclude<BankSource, "unknown" | "sinopac_cc">, CsvAdapter> = {
+  tbank:        tbankAdapter,
+  cathay_bank:  cathayBankAdapter,
   esun_bank:    esunBankAdapter,
   ctbc_bank:    ctbcBankAdapter,
   mega_bank:    megaBankAdapter,
   yuanta_bank:  yuantaBankAdapter,
   sinopac_bank: sinopacBankAdapter,
+  kgi_bank:     kgiBankAdapter,
+  cathay_cc:    cathayCcAdapter,
+  esun_cc:      esunCcAdapter,
+  ctbc_cc:      ctbcCcAdapter,
+  taishin_cc:   taishinCcAdapter,
 };
 
 function getAdapter(source: BankSource): CsvAdapter {
-  if (source === "kgi_bank")   return createAiFallbackAdapter("kgi_bank");
   if (source === "sinopac_cc") return createAiFallbackAdapter("sinopac_cc");
   if (source === "unknown")    return createAiFallbackAdapter("unknown");
   return ADAPTERS[source];
@@ -31,11 +44,20 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export interface ImportedTransaction {
+  date: string;
+  type: string;
+  amount: number;
+  note: string;
+  category: string;
+}
+
 export interface CsvImportResult {
   imported: number;
   skipped: number;
   errors: string[];
   source: BankSource;
+  transactions: ImportedTransaction[];
 }
 
 async function saveTransactions(
@@ -63,7 +85,7 @@ async function saveTransactions(
       if (existing) {
         result.skipped++;
       } else {
-        const created = await prisma.transaction.create({
+        await prisma.transaction.create({
           data: {
             userId,
             date: dateOnly,
@@ -76,6 +98,13 @@ async function saveTransactions(
         });
 
         result.imported++;
+        result.transactions.push({
+          date: dateOnly.toISOString().split("T")[0],
+          type: tx.type,
+          amount: tx.amount,
+          note: tx.note ?? "",
+          category: tx.category ?? "",
+        });
       }
 
       await sleep(300);
@@ -91,7 +120,7 @@ async function parseAndSave(
   rows: Record<string, string>[],
   userId: string,
 ): Promise<CsvImportResult> {
-  const result: CsvImportResult = { imported: 0, skipped: 0, errors: [], source: "unknown" };
+  const result: CsvImportResult = { imported: 0, skipped: 0, errors: [], source: "unknown", transactions: [] };
 
   if (rows.length === 0) {
     result.errors.push("檔案無有效資料");
@@ -167,6 +196,13 @@ function stripSinopacMetaRows(text: string): string {
 
 export async function parseCsv(buffer: Buffer, userId: string): Promise<CsvImportResult> {
   const raw = detectAndConvertToUtf8(buffer);
+
+  // 凱基銀行固定寬度文字格式 — 繞過 PapaParse 直接解析
+  if (isKgiBankText(raw)) {
+    const { headers, rows } = parseKgiText(raw);
+    return parseAndSave(headers, rows, userId);
+  }
+
   const utf8Content = stripSinopacMetaRows(raw);
 
   const parseResult = Papa.parse<Record<string, string>>(utf8Content, {

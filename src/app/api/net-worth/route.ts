@@ -52,6 +52,7 @@ export async function GET() {
       0
     );
 
+    // currentBalance 已含分期未清償餘額（由帳單新增/繳款/PDF 匯入共同維護）
     const totalCreditDebt = creditCards.reduce<number>(
       (sum, c) => sum + parseFloat(c.currentBalance.toString()),
       0

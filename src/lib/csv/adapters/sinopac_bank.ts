@@ -1,4 +1,5 @@
 import { CsvAdapter, ParsedTransaction } from "../types";
+import { detectCategory } from "../transfer";
 
 /**
  * 永豐銀行存款 (Sinopac Bank - Deposit) adapter
@@ -45,10 +46,10 @@ export const sinopacBankAdapter: CsvAdapter = {
       const note = (row["摘要"] ?? "").trim();
 
       if (debit > 0) {
-        results.push({ date, amount: debit,  type: "支出", category: "其他", note, source: "sinopac_bank" });
+        results.push({ date, amount: debit,  type: "支出", category: detectCategory(note), note, source: "sinopac_bank" });
       }
       if (credit > 0) {
-        results.push({ date, amount: credit, type: "收入", category: "其他", note, source: "sinopac_bank" });
+        results.push({ date, amount: credit, type: "收入", category: detectCategory(note), note, source: "sinopac_bank" });
       }
     }
 

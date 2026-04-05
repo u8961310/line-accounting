@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-interface SummaryData { totals: { income: number; expense: number; net: number } }
+interface MonthlySummary { month: string; income: number; expense: number }
+interface SummaryData { totals: { income: number; expense: number; net: number }; monthly: MonthlySummary[] }
+interface FixedExpenseItem { amount: number }
+interface BudgetItem { amount: number }
 interface GoalItem { id: string; name: string; emoji: string; savedAmount: number; targetAmount: number; linkedSource: string | null }
 interface LoanItem {
   id: string; name: string; lender: string; status: string;
@@ -89,13 +92,15 @@ export default function GradSchoolPlanner({ isDemo }: { isDemo: boolean }) {
   const [settings, setSettings]     = useState<PlanSettings>(DEFAULT_SETTINGS);
   const [editMode, setEditMode]     = useState(false);
   const [draft,    setDraft]        = useState<PlanSettings>(DEFAULT_SETTINGS);
-  const [currentSavings, setCurrentSavings] = useState<number | null>(null);
-  const [monthlyNet,     setMonthlyNet]     = useState<number | null>(null);
-  const [goals,          setGoals]          = useState<GoalItem[]>([]);
-  const [loans,          setLoans]          = useState<{ name: string; lender: string; remaining: number; monthly: number; payoffDate: string | null; interestRate: number; clearsBeforeEnrollment: boolean; isCC?: boolean }[]>([]);
-  const [monthlyExpense, setMonthlyExpense] = useState<number>(0);
-  const [balances,       setBalances]       = useState<BalanceItem[]>([]);
-  const [loading,        setLoading]        = useState(true);
+  const [currentSavings,     setCurrentSavings]     = useState<number | null>(null);
+  const [goals,              setGoals]              = useState<GoalItem[]>([]);
+  const [loans,              setLoans]              = useState<{ name: string; lender: string; remaining: number; monthly: number; payoffDate: string | null; interestRate: number; clearsBeforeEnrollment: boolean; isCC?: boolean }[]>([]);
+  const [monthlyExpense,     setMonthlyExpense]     = useState<number>(0);
+  const [balances,           setBalances]           = useState<BalanceItem[]>([]);
+  const [avgMonthlyIncome,   setAvgMonthlyIncome]   = useState<number>(0);
+  const [totalFixedExpenses, setTotalFixedExpenses] = useState<number>(0);
+  const [totalBudget,        setTotalBudget]        = useState<number>(0);
+  const [loading,            setLoading]            = useState(true);
 
   // Load settings from localStorage
   useEffect(() => {
@@ -128,7 +133,9 @@ export default function GradSchoolPlanner({ isDemo }: { isDemo: boolean }) {
     if (isDemo) {
       setGoals([{ id: "demo", name: "研究所基金", emoji: "🎓", savedAmount: 350000, targetAmount: 900000, linkedSource: null }]);
       setCurrentSavings(350000);
-      setMonthlyNet(15000);
+      setAvgMonthlyIncome(75000);
+      setTotalFixedExpenses(30000);
+      setTotalBudget(15000);
       setMonthlyExpense(57000);
       setLoans([
         { name: "凱基速還金", lender: "凱基", remaining: 46239, monthly: 5000, payoffDate: "2026-10", interestRate: 16, clearsBeforeEnrollment: true },
@@ -138,30 +145,42 @@ export default function GradSchoolPlanner({ isDemo }: { isDemo: boolean }) {
       return;
     }
     setLoading(true);
+    const thisMonth = new Date().toISOString().slice(0, 7);
     Promise.allSettled([
       fetch("/api/goals").then(r => r.json()),
       fetch("/api/summary?months=3").then(r => r.json()),
       fetch("/api/loans").then(r => r.json()),
       fetch("/api/credit-cards").then(r => r.json()),
       fetch("/api/balances").then(r => r.json()),
-    ]).then(([goalsRes, sumRes, loansRes, ccRes, balancesRes]) => {
+      fetch("/api/fixed-expenses").then(r => r.json()),
+      fetch(`/api/budgets?month=${thisMonth}`).then(r => r.json()),
+    ]).then(([goalsRes, sumRes, loansRes, ccRes, balancesRes, fixedRes, budgetsRes]) => {
       // 各自安全取值，確保型別為陣列（避免 API 回錯誤物件導致 .filter 爆炸）
       const goalsRaw    = goalsRes.status    === "fulfilled" ? goalsRes.value    : null;
       const sumRaw      = sumRes.status      === "fulfilled" ? sumRes.value      : null;
       const loansRaw    = loansRes.status    === "fulfilled" ? loansRes.value    : null;
       const ccRaw       = ccRes.status       === "fulfilled" ? ccRes.value       : null;
       const balancesRaw = balancesRes.status === "fulfilled" ? balancesRes.value : null;
+      const fixedRaw    = fixedRes.status    === "fulfilled" ? fixedRes.value    : {};
+      const budgetsRaw  = budgetsRes.status  === "fulfilled" ? budgetsRes.value  : {};
 
       const goalsData: GoalItem[]       = Array.isArray(goalsRaw)    ? goalsRaw    : [];
       const sumData: SummaryData | null = sumRaw && typeof sumRaw === "object" && "totals" in sumRaw ? sumRaw as SummaryData : null;
       const loansData: LoanItem[]       = Array.isArray(loansRaw)    ? loansRaw    : [];
       const ccData: CreditCardItem[]    = Array.isArray(ccRaw)       ? ccRaw       : [];
       const balancesData: BalanceItem[] = Array.isArray(balancesRaw) ? balancesRaw : [];
+      const fixedData: FixedExpenseItem[]  = Array.isArray((fixedRaw  as { fixedExpenses?: unknown }).fixedExpenses) ? (fixedRaw  as { fixedExpenses: FixedExpenseItem[] }).fixedExpenses : [];
+      const budgetsData: BudgetItem[]      = Array.isArray((budgetsRaw as { budgets?: unknown }).budgets)            ? (budgetsRaw as { budgets: BudgetItem[] }).budgets            : [];
 
       setGoals(goalsData);
       setBalances(balancesData);
-      setMonthlyNet(sumData?.totals?.net ?? 0);
       setMonthlyExpense((sumData?.totals?.expense ?? 0) / 3);
+
+      const recent = (sumData?.monthly ?? []).slice(-3);
+      if (recent.length > 0)
+        setAvgMonthlyIncome(recent.reduce((s, m) => s + (Number(m.income) || 0), 0) / recent.length);
+      setTotalFixedExpenses(fixedData.reduce((s, f) => s + f.amount, 0));
+      setTotalBudget(budgetsData.reduce((s, b) => s + b.amount, 0));
 
       // 計算每筆貸款的還清時間
       const now = new Date();
@@ -257,7 +276,10 @@ export default function GradSchoolPlanner({ isDemo }: { isDemo: boolean }) {
   const netLiving     = Math.max(0, settings.living - settings.monthlyStipend);
   const totalStipend  = settings.monthlyStipend * settings.duration;
   const savings       = currentSavings ?? 0;
-  const projectedNet  = monthlyNet ?? 0;
+
+  // 每月可存 = 收入 − 固定支出 − 貸款 − 預算
+  const totalMonthlyLoan    = loans.filter(l => !l.isCC).reduce((s, l) => s + l.monthly, 0);
+  const monthlyCanSave      = avgMonthlyIncome - totalFixedExpenses - totalMonthlyLoan - totalBudget;
 
   // 預備金
   const reserveAmount = Math.round(monthlyExpense * settings.reserveMonths);
@@ -266,7 +288,6 @@ export default function GradSchoolPlanner({ isDemo }: { isDemo: boolean }) {
   const totalDebt           = loans.reduce((s, l) => s + l.remaining, 0);
   const loansBeforeEnroll   = loans.filter(l => l.clearsBeforeEnrollment);
   const loansAfterEnroll    = loans.filter(l => !l.clearsBeforeEnrollment && !l.isCC);
-  const totalMonthlyLoan    = loans.filter(l => !l.isCC).reduce((s, l) => s + l.monthly, 0);
 
   // 就學期間仍需還款的貸款月付合計 × 就讀月數（入學後才有還款壓力的部分）
   const loansDuringSchool = loansAfterEnroll.reduce((s, l) => {
@@ -289,7 +310,7 @@ export default function GradSchoolPlanner({ isDemo }: { isDemo: boolean }) {
   const now = new Date();
   let adjustedProjectedSavings = savings;
   {
-    let currentMonthly = projectedNet;
+    let currentMonthly = monthlyCanSave;
     for (let m = 0; m < monthsLeft; m++) {
       const ym = (() => { const d = new Date(now.getFullYear(), now.getMonth() + m, 1); return d.toISOString().slice(0, 7); })();
       for (const loan of loansBeforeEnroll) {
@@ -305,12 +326,12 @@ export default function GradSchoolPlanner({ isDemo }: { isDemo: boolean }) {
   const projGap       = totalTarget - adjustedProjectedSavings;
   const progressPct   = totalTarget > 0 ? Math.min(100, (savings / totalTarget) * 100) : 0;
   const onTrack       = adjustedProjectedSavings >= totalTarget;
-  const surplusNeeded = Math.max(0, monthlyNeed - projectedNet);
+  const surplusNeeded = Math.max(0, monthlyNeed - monthlyCanSave);
 
   // 有效月儲蓄率（考慮貸款還清釋放現金流，用於里程碑日期估算）
   const effectiveMonthlyRate = monthsLeft > 0
     ? (adjustedProjectedSavings - savings) / monthsLeft
-    : projectedNet;
+    : monthlyCanSave;
 
   // 扣除預備金後的淨財務狀況
   const netPosition   = savings - reserveAmount - totalDebt;
@@ -386,11 +407,11 @@ export default function GradSchoolPlanner({ isDemo }: { isDemo: boolean }) {
           color="#6366F1"
           accent />
         <StatCard
-          label="目前月均淨儲蓄"
-          value={`NT$ ${fmt(projectedNet)}`}
-          sub={loansBeforeEnroll.length > 0 ? `還清後可達 NT$ ${fmt(projectedNet + loansBeforeEnroll.reduce((s,l)=>s+l.monthly,0))}` : "近期收入 − 支出"}
-          color={projectedNet >= monthlyNeed ? "#10B981" : "#F59E0B"}
-          accent={projectedNet < monthlyNeed} />
+          label="每月可存（估）"
+          value={`NT$ ${fmt(Math.max(0, monthlyCanSave))}`}
+          sub={loansBeforeEnroll.length > 0 ? `還清後可達 NT$ ${fmt(monthlyCanSave + loansBeforeEnroll.reduce((s,l)=>s+l.monthly,0))}` : `收入 − 固定 − 貸款 − 預算`}
+          color={monthlyCanSave >= monthlyNeed ? "#10B981" : "#F59E0B"}
+          accent={monthlyCanSave < monthlyNeed} />
         <StatCard
           label="預計入學時存款"
           value={`NT$ ${fmt(adjustedProjectedSavings)}`}
@@ -503,18 +524,40 @@ export default function GradSchoolPlanner({ isDemo }: { isDemo: boolean }) {
       )}
 
       {/* Action plan */}
-      <div className="rounded-2xl border p-6 space-y-4"
+      <div className="rounded-2xl border p-6 space-y-5"
         style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
-        <p className="text-[16px] font-bold" style={{ color: "var(--text-primary)" }}>存款行動計畫</p>
+        <p className="text-[16px] font-bold" style={{ color: "var(--text-primary)" }}>🎯 存款行動計畫</p>
 
-        {/* Monthly savings gap */}
+        {/* Monthly savings formula breakdown */}
+        <div className="rounded-xl p-4 space-y-2" style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
+          <p className="text-[12px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>每月可存金額試算</p>
+          {[
+            { label: "平均月收入（近 3 個月）", amount: avgMonthlyIncome, sign: "+", color: "#34D399" },
+            { label: "固定支出", amount: totalFixedExpenses, sign: "−", color: "#F87171" },
+            { label: "貸款月付", amount: totalMonthlyLoan, sign: "−", color: "#F87171" },
+            { label: "月預算上限", amount: totalBudget, sign: "−", color: "#F87171" },
+          ].map(({ label, amount, sign, color }) => (
+            <div key={label} className="flex items-center justify-between text-[13px]">
+              <span style={{ color: "var(--text-sub)" }}>{sign} {label}</span>
+              <span className="tabular-nums font-semibold" style={{ color }}>NT$ {fmt(amount)}</span>
+            </div>
+          ))}
+          <div className="border-t pt-2 flex items-center justify-between" style={{ borderColor: "var(--border-inner)" }}>
+            <span className="text-[14px] font-bold" style={{ color: "var(--text-primary)" }}>= 每月可存（估）</span>
+            <span className="text-[18px] font-black tabular-nums" style={{ color: monthlyCanSave >= monthlyNeed ? "#34D399" : "#F59E0B" }}>
+              NT$ {fmt(Math.max(0, monthlyCanSave))}
+            </span>
+          </div>
+        </div>
+
+        {/* Status banner */}
         {surplusNeeded > 0 ? (
           <div className="rounded-xl px-4 py-3.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)" }}>
             <p className="text-[14px] font-semibold" style={{ color: "#FCA5A5" }}>
-              ⚠ 月淨儲蓄不足，每月還需多存 NT$ {fmt(surplusNeeded)}
+              ⚠ 月儲蓄不足目標，每月還需多存 NT$ {fmt(surplusNeeded)}
             </p>
             <p className="text-[13px] mt-1" style={{ color: "#F87171" }}>
-              建議增加收入或降低支出，目標每月淨儲蓄達 NT$ {fmt(monthlyNeed)}
+              目前每月可存 NT$ {fmt(Math.max(0, monthlyCanSave))}，達標需 NT$ {fmt(monthlyNeed)}／月
             </p>
           </div>
         ) : (
@@ -528,20 +571,85 @@ export default function GradSchoolPlanner({ isDemo }: { isDemo: boolean }) {
           </div>
         )}
 
-        {/* Breakdown */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          {[
-            ...(settings.tuition > 0 ? [{ label: "學費（估計）", amount: settings.tuition, color: "#6366F1", sign: "" }] : []),
-            ...(settings.living > 0 ? [{ label: `生活費（${settings.duration} 個月）`, amount: settings.living * settings.duration, color: "#F59E0B", sign: "" }] : []),
-            ...(totalStipend > 0 ? [{ label: `公費收入（${settings.duration} 個月）`, amount: totalStipend, color: "#10B981", sign: "−" }] : []),
-            ...(loansDuringSchool > 0 ? [{ label: `就學期間貸款（${settings.duration} 個月）`, amount: loansDuringSchool, color: "#F87171", sign: "" }] : []),
-            { label: gap > 0 ? "剩餘缺口" : "已超額存款", amount: Math.abs(gap), color: gap > 0 ? "#EF4444" : "#10B981", sign: gap > 0 ? "" : "+" },
-          ].map(({ label, amount, color, sign }) => (
-            <div key={label} className="rounded-xl px-4 py-3" style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
-              <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>{label}</p>
-              <p className="text-[18px] font-black tabular-nums mt-0.5" style={{ color }}>{sign}NT$ {fmt(amount)}</p>
+        {/* Concrete recommendations */}
+        <div className="space-y-2">
+          <p className="text-[13px] font-bold" style={{ color: "var(--text-sub)" }}>具體行動建議</p>
+          {surplusNeeded > 0 && (
+            <div className="flex items-start gap-2.5 rounded-xl px-4 py-3" style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)" }}>
+              <span className="mt-0.5 flex-shrink-0">🔴</span>
+              <div>
+                <p className="text-[13px] font-semibold" style={{ color: "#FCA5A5" }}>每月需額外節省 NT$ {fmt(surplusNeeded)}</p>
+                <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                  建議檢視月預算，優先削減娛樂（目前 NT$ {fmt(totalBudget)} 預算中尋找空間）
+                </p>
+              </div>
             </div>
-          ))}
+          )}
+          {loansBeforeEnroll.length > 0 && (
+            <div className="flex items-start gap-2.5 rounded-xl px-4 py-3" style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.15)" }}>
+              <span className="mt-0.5 flex-shrink-0">🟢</span>
+              <div>
+                <p className="text-[13px] font-semibold" style={{ color: "#34D399" }}>
+                  {loansBeforeEnroll.length} 筆貸款預計入學前還清，月現金流增加 NT$ {fmt(loansBeforeEnroll.reduce((s,l)=>s+l.monthly,0))}
+                </p>
+                <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>還清後建議將釋放金額全數轉入研究所基金</p>
+              </div>
+            </div>
+          )}
+          {loansAfterEnroll.length > 0 && (
+            <div className="flex items-start gap-2.5 rounded-xl px-4 py-3" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)" }}>
+              <span className="mt-0.5 flex-shrink-0">🟡</span>
+              <div>
+                <p className="text-[13px] font-semibold" style={{ color: "#FCD34D" }}>
+                  就學期間仍需還貸款 NT$ {fmt(loansAfterEnroll.reduce((s,l)=>s+l.monthly,0))}/月
+                </p>
+                <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                  已計入目標金額（NT$ {fmt(loansDuringSchool)}），請確保入學前存款足額
+                </p>
+              </div>
+            </div>
+          )}
+          {settings.monthlyStipend > 0 && (
+            <div className="flex items-start gap-2.5 rounded-xl px-4 py-3" style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)" }}>
+              <span className="mt-0.5 flex-shrink-0">🎓</span>
+              <div>
+                <p className="text-[13px] font-semibold" style={{ color: "#A5B4FC" }}>
+                  公費零用金 NT$ {fmt(settings.monthlyStipend)}/月（就學期間）
+                </p>
+                <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                  已從生活費中扣除，減輕入學前存款壓力 NT$ {fmt(totalStipend)}
+                </p>
+              </div>
+            </div>
+          )}
+          <div className="flex items-start gap-2.5 rounded-xl px-4 py-3" style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)" }}>
+            <span className="mt-0.5 flex-shrink-0">📅</span>
+            <div>
+              <p className="text-[13px] font-semibold" style={{ color: "#818CF8" }}>每月定存 NT$ {fmt(Math.max(0, monthlyNeed))} 至研究所基金</p>
+              <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                距入學 {monthsLeft} 個月，建議設定自動轉帳，避免月底存款被消耗
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Breakdown */}
+        <div>
+          <p className="text-[13px] font-bold mb-2" style={{ color: "var(--text-sub)" }}>目標金額明細</p>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            {[
+              ...(settings.tuition > 0 ? [{ label: "學費（估計）", amount: settings.tuition, color: "#6366F1", sign: "" }] : []),
+              ...(settings.living > 0 ? [{ label: `生活費（${settings.duration} 個月）`, amount: settings.living * settings.duration, color: "#F59E0B", sign: "" }] : []),
+              ...(totalStipend > 0 ? [{ label: `公費收入（${settings.duration} 個月）`, amount: totalStipend, color: "#10B981", sign: "−" }] : []),
+              ...(loansDuringSchool > 0 ? [{ label: `就學貸款（${settings.duration} 個月）`, amount: loansDuringSchool, color: "#F87171", sign: "" }] : []),
+              { label: gap > 0 ? "剩餘缺口" : "已超額存款", amount: Math.abs(gap), color: gap > 0 ? "#EF4444" : "#10B981", sign: gap > 0 ? "" : "+" },
+            ].map(({ label, amount, color, sign }) => (
+              <div key={label} className="rounded-xl px-4 py-3" style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
+                <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>{label}</p>
+                <p className="text-[18px] font-black tabular-nums mt-0.5" style={{ color }}>{sign}NT$ {fmt(amount)}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Timeline milestones */}

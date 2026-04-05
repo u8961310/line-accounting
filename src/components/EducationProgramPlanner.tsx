@@ -561,6 +561,118 @@ export default function EducationProgramPlanner({ isDemo }: { isDemo: boolean })
         />
       </div>
 
+      {/* ── 行動計畫 ── */}
+      <SectionLabel>行動建議</SectionLabel>
+      <div className="rounded-2xl border p-5 space-y-4" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+
+        {/* Monthly formula breakdown */}
+        <div className="rounded-xl p-4 space-y-2" style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)" }}>
+          <p className="text-[12px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>每月可存金額試算</p>
+          {[
+            { label: "平均月收入（近 3 個月）", amount: avgMonthlyIncome, sign: "+", color: "#34D399" },
+            { label: "固定支出", amount: totalFixedExpenses, sign: "−", color: "#F87171" },
+            { label: "貸款月付", amount: totalLoanMonthly, sign: "−", color: "#F87171" },
+            { label: "月預算上限", amount: totalBudget, sign: "−", color: "#F87171" },
+          ].map(({ label, amount, sign, color }) => (
+            <div key={label} className="flex items-center justify-between text-[13px]">
+              <span style={{ color: "var(--text-sub)" }}>{sign} {label}</span>
+              <span className="tabular-nums font-semibold" style={{ color }}>NT$ {fmt(amount)}</span>
+            </div>
+          ))}
+          <div className="border-t pt-2 flex items-center justify-between" style={{ borderColor: "var(--border-inner)" }}>
+            <span className="text-[14px] font-bold" style={{ color: "var(--text-primary)" }}>= 每月可存（估）</span>
+            <span className="text-[18px] font-black tabular-nums"
+              style={{ color: effectiveMonthly >= nextMonthlyNeeded ? "#34D399" : "#F59E0B" }}>
+              NT$ {fmt(Math.max(0, effectiveMonthly))}
+            </span>
+          </div>
+        </div>
+
+        {/* Status */}
+        {!nextPayment ? (
+          <div className="rounded-xl px-4 py-3" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+            <p className="text-[14px] font-semibold" style={{ color: "#34D399" }}>✅ 所有學費已備妥，無需額外儲蓄行動</p>
+          </div>
+        ) : nextGap === 0 ? (
+          <div className="rounded-xl px-4 py-3" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+            <p className="text-[14px] font-semibold" style={{ color: "#34D399" }}>✅ 下筆繳費 NT$ {fmt(nextPayment.amount)} 已備妥</p>
+            <p className="text-[13px] mt-0.5" style={{ color: "var(--text-muted)" }}>繳款後記得更新「已繳次數」</p>
+          </div>
+        ) : canMeetNext ? (
+          <div className="rounded-xl px-4 py-3" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
+            <p className="text-[14px] font-semibold" style={{ color: "#FCD34D" }}>
+              📚 距 {nextPayment.label} 還有 {nextPayment.monthsAway} 個月，每月存 NT$ {fmt(Math.ceil(nextMonthlyNeeded))} 可達標
+            </p>
+            <p className="text-[13px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+              還差 NT$ {fmt(nextGap)}，按目前可存 NT$ {fmt(Math.max(0, effectiveMonthly))}/月 預計達標
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl px-4 py-3" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
+            <p className="text-[14px] font-semibold" style={{ color: "#FCA5A5" }}>
+              ⚠ 下筆 {nextPayment.label} NT$ {fmt(nextPayment.amount)} 需加速存款
+            </p>
+            <p className="text-[13px] mt-0.5" style={{ color: "#F87171" }}>
+              還差 NT$ {fmt(nextGap)}，需每月存 NT$ {fmt(Math.ceil(nextMonthlyNeeded))}，但可存 NT$ {fmt(Math.max(0, effectiveMonthly))} 不足
+            </p>
+          </div>
+        )}
+
+        {/* Concrete recommendations */}
+        <div className="space-y-2">
+          {nextPayment && nextGap > 0 && (
+            <div className="flex items-start gap-2.5 rounded-xl px-4 py-3"
+              style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)" }}>
+              <span className="mt-0.5 flex-shrink-0">📅</span>
+              <div>
+                <p className="text-[13px] font-semibold" style={{ color: "#818CF8" }}>
+                  每月定存 NT$ {fmt(Math.ceil(nextMonthlyNeeded))} 至教育基金
+                </p>
+                <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                  建議設定自動轉帳，{nextPayment.monthsAway} 個月後（{nextPayment.label}）繳款 NT$ {fmt(nextPayment.amount)}
+                </p>
+              </div>
+            </div>
+          )}
+          {sharesBankWithGrad && (
+            <div className="flex items-start gap-2.5 rounded-xl px-4 py-3"
+              style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)" }}>
+              <span className="mt-0.5 flex-shrink-0">🔗</span>
+              <div>
+                <p className="text-[13px] font-semibold" style={{ color: "#818CF8" }}>共用帳戶：繳費前確認餘額不影響研究所存款目標</p>
+                <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                  繳款 NT$ {fmt(nextPayment?.amount ?? 0)} 後，帳戶餘額約 NT$ {fmt(Math.max(0, currentSavings - (nextPayment?.amount ?? 0)))}
+                </p>
+              </div>
+            </div>
+          )}
+          <div className="flex items-start gap-2.5 rounded-xl px-4 py-3"
+            style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.15)" }}>
+            <span className="mt-0.5 flex-shrink-0">💡</span>
+            <div>
+              <p className="text-[13px] font-semibold" style={{ color: "#34D399" }}>薪資正常發放，無需中斷儲蓄</p>
+              <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                教育學程就讀期間仍持續工作，月收入 NT$ {fmt(avgMonthlyIncome)} 維持不變，與研究所規劃最大差異
+              </p>
+            </div>
+          </div>
+          {totalRemaining > 0 && (
+            <div className="flex items-start gap-2.5 rounded-xl px-4 py-3"
+              style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)" }}>
+              <span className="mt-0.5 flex-shrink-0">🎯</span>
+              <div>
+                <p className="text-[13px] font-semibold" style={{ color: "#FCD34D" }}>
+                  剩餘學費共 NT$ {fmt(totalRemaining)}，分 {remainingPayments.length} 次繳完
+                </p>
+                <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                  按目前可存速率，預計 {achieveDate ? achieveDate + " 存足下筆" : "持續追蹤"}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* ── 繳費時間表 ── */}
       <SectionLabel>繳費時間表</SectionLabel>
       <div className="space-y-2">

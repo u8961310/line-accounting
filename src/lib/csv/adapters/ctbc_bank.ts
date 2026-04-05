@@ -1,4 +1,5 @@
 import { CsvAdapter, ParsedTransaction } from "../types";
+import { detectCategory } from "../transfer";
 
 /**
  * 中國信託存款 (CTBC Bank - Deposit) adapter
@@ -66,7 +67,7 @@ export const ctbcBankAdapter: CsvAdapter = {
           date,
           amount: withdraw,
           type: "支出",
-          category: "其他",
+          category: detectCategory(note),
           note,
           source: "ctbc_bank",
         });
@@ -77,7 +78,7 @@ export const ctbcBankAdapter: CsvAdapter = {
           date,
           amount: deposit,
           type: "收入",
-          category: "其他",
+          category: detectCategory(note),
           note,
           source: "ctbc_bank",
         });

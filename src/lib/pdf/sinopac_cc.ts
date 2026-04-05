@@ -3,11 +3,12 @@ const pdfParse = require("pdf-parse") as (buffer: Buffer) => Promise<{ text: str
 import { ParsedTransaction } from "../csv/types";
 
 export interface SinopacBillSummary {
-  billingMonth: string;   // "2026-03"
-  statementDate: Date;    // 結帳日
-  dueDate: Date;          // 繳款截止日
-  totalAmount: number;    // 本期應繳
-  minimumPayment: number; // 最低應繳
+  billingMonth: string;           // "2026-03"
+  statementDate: Date;            // 結帳日
+  dueDate: Date;                  // 繳款截止日
+  totalAmount: number;            // 本期應繳
+  minimumPayment: number;         // 最低應繳
+  installmentOutstanding: number; // 分期交易未清償餘額
 }
 
 export interface SinopacPdfResult {
@@ -39,6 +40,7 @@ export async function parseSinopacCcPdf(buffer: Buffer): Promise<SinopacPdfResul
   let totalAmount = 0;
   let minimumPayment = 0;
   let billingMonth = "";
+  let installmentOutstanding = 0;
 
   for (const line of lines) {
     // 結帳日
@@ -69,6 +71,18 @@ export async function parseSinopacCcPdf(buffer: Buffer): Promise<SinopacPdfResul
       if (nums && nums.length >= 2) {
         totalAmount = parseAmount(nums[nums.length - 2]);
         if (minimumPayment === 0) minimumPayment = parseAmount(nums[nums.length - 1]);
+      }
+    }
+  }
+
+  // 分期交易未清償餘額：PDF 版面使兩個金額連續出現（換頁後）
+  // 模式：獨立數字行 == totalAmount，緊接的下一個獨立數字行即為分期未清償餘額
+  const standaloneNum = /^\d{1,3}(,\d{3})+$/;
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (standaloneNum.test(lines[i]) && parseAmount(lines[i]) === totalAmount) {
+      if (standaloneNum.test(lines[i + 1])) {
+        installmentOutstanding = parseAmount(lines[i + 1]);
+        break;
       }
     }
   }
@@ -143,7 +157,7 @@ export async function parseSinopacCcPdf(buffer: Buffer): Promise<SinopacPdfResul
   }
 
   return {
-    summary: { billingMonth, statementDate, dueDate, totalAmount, minimumPayment },
+    summary: { billingMonth, statementDate, dueDate, totalAmount, minimumPayment, installmentOutstanding },
     transactions,
   };
 }
