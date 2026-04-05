@@ -199,6 +199,7 @@ function BudgetCard({
 }
 
 interface SuggestionItem { category: string; amount: number }
+interface HistorySuggestionItem { category: string; avg: number; suggested: number; monthsOfData: number }
 
 interface BudgetSuggestionProps {
   income:   number;
@@ -348,6 +349,96 @@ function UnsetCategoryGrid({
               <span>{cat}</span>
             </button>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HistorySuggestion({
+  applying,
+  onApply,
+}: {
+  applying: boolean;
+  onApply: (items: SuggestionItem[]) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<HistorySuggestionItem[]>([]);
+  const [loadingSugg, setLoadingSugg] = useState(false);
+  const [months] = useState(3);
+
+  useEffect(() => {
+    if (!open || items.length > 0) return;
+    setLoadingSugg(true);
+    fetch(`/api/budgets/suggest?months=${months}`)
+      .then(r => r.json())
+      .then((d: { suggestions?: HistorySuggestionItem[] }) => setItems(d.suggestions ?? []))
+      .catch(console.error)
+      .finally(() => setLoadingSugg(false));
+  }, [open, items.length, months]);
+
+  const toApply: SuggestionItem[] = items.map(i => ({ category: i.category, amount: i.suggested }));
+
+  return (
+    <div className="rounded-2xl overflow-hidden"
+      style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "var(--card-shadow)" }}>
+      <button className="w-full flex items-center justify-between px-5 py-3.5 hover:opacity-80 transition-opacity"
+        onClick={() => setOpen(v => !v)}>
+        <div className="flex items-center gap-2">
+          <span className="text-[16px]">📊</span>
+          <div className="text-left">
+            <p className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>依歷史消費建議預算</p>
+            <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
+              根據過去 {months} 個月實際支出平均，加 10% 緩衝自動試算
+            </p>
+          </div>
+        </div>
+        <span className="text-[14px]" style={{ color: "var(--text-muted)" }}>{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 space-y-3" style={{ borderTop: "1px solid var(--border-inner)" }}>
+          {loadingSugg ? (
+            <p className="text-center py-4 text-[14px]" style={{ color: "var(--text-muted)" }}>載入中…</p>
+          ) : items.length === 0 ? (
+            <p className="text-center py-4 text-[14px]" style={{ color: "var(--text-muted)" }}>歷史資料不足，無法計算</p>
+          ) : (
+            <>
+              <div className="rounded-xl overflow-hidden mt-3" style={{ border: "1px solid var(--border-inner)" }}>
+                <div className="grid grid-cols-3 px-3 py-2 text-[13px] font-semibold"
+                  style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>
+                  <span>分類</span>
+                  <span className="text-right">近 {months} 月平均</span>
+                  <span className="text-right">建議上限</span>
+                </div>
+                {items.map((item, i) => (
+                  <div key={item.category} className="grid grid-cols-3 px-3 py-2 border-t text-[14px]"
+                    style={{ borderColor: "var(--border-inner)", background: i % 2 === 0 ? "transparent" : "var(--bg-input)" }}>
+                    <span className="flex items-center gap-1.5">
+                      <span>{CATEGORY_ICONS[item.category] ?? "📌"}</span>
+                      <span style={{ color: "var(--text-primary)" }}>{item.category}</span>
+                    </span>
+                    <span className="text-right tabular-nums" style={{ color: "var(--text-muted)" }}>
+                      NT$ {fmt(item.avg)}
+                    </span>
+                    <span className="text-right font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
+                      NT$ {fmt(item.suggested)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => onApply(toApply)}
+                disabled={applying}
+                className="w-full py-2.5 rounded-xl text-[14px] font-bold text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+                style={{ background: "linear-gradient(135deg,#0ea5e9,#3b82f6)" }}>
+                {applying ? "套用中…" : "📊 一鍵套用歷史建議預算"}
+              </button>
+              <p className="text-[12px] text-center" style={{ color: "var(--text-muted)" }}>
+                僅修改尚未設定預算的分類 · 已有預算的分類不受影響
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -702,6 +793,9 @@ export default function BudgetManager({ extraCategories = [] }: { extraCategorie
           onApply={handleApplySuggestion}
         />
       )}
+
+      {/* ── 歷史消費建議 ── */}
+      <HistorySuggestion applying={applying} onApply={handleApplySuggestion} />
 
       {/* ── 新增預算分類（置頂）── */}
       <UnsetCategoryGrid

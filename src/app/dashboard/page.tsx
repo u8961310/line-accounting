@@ -522,8 +522,10 @@ export default function DashboardPage() {
   const [txAmountMax,    setTxAmountMax]    = useState("");
   const [txTypeFilter,   setTxTypeFilter]   = useState<"" | "收入" | "支出">("");
   const [txSourceFilter, setTxSourceFilter] = useState<string[]>([]);
-  const [txMoodFilter,   setTxMoodFilter]   = useState<string>("");
-  const [moodPickerId,   setMoodPickerId]   = useState<string | null>(null);
+  const [txMoodFilter,      setTxMoodFilter]      = useState<string>("");
+  const [moodPickerId,      setMoodPickerId]      = useState<string | null>(null);
+  const [editingAmountId,   setEditingAmountId]   = useState<string | null>(null);
+  const [editingAmountVal,  setEditingAmountVal]  = useState<string>("");
   const [batchMode,      setBatchMode]      = useState(false);
   const [selectedIds,    setSelectedIds]    = useState<Set<string>>(new Set());
   const [batchCat,       setBatchCat]       = useState("");
@@ -579,6 +581,13 @@ export default function DashboardPage() {
   const [dismissedDupPairs,      setDismissedDupPairs]      = useState<Set<string>>(new Set());
   const [dupDeleting,            setDupDeleting]            = useState<Set<string>>(new Set());
   const [budgetOverview, setBudgetOverview] = useState<{ category: string; amount: number; spent: number }[]>([]);
+  const [aiInsight,      setAiInsight]      = useState<{ insight: string; charts: { donut?: string | null; bar?: string | null }; meta: { totalIncome: number; totalExpense: number; savingRate: string; overBudgetCount: number } } | null>(null);
+  const [aiInsightLoading, setAiInsightLoading] = useState(false);
+  const [aiInsightErr,     setAiInsightErr]     = useState<string | null>(null);
+  const [notionSyncingInsight, setNotionSyncingInsight] = useState(false);
+  const [notionInsightUrl,     setNotionInsightUrl]     = useState<string | null>(null);
+  const [anomalies,      setAnomalies]      = useState<{ category: string; current: number; mean: number; stddev: number; zscore: number; prevMonths: number[] }[]>([]);
+  const [anomalyLoading, setAnomalyLoading] = useState(false);
   const [selectedMonth,      setSelectedMonth]      = useState<string | null>(null);
   const [monthDetail,        setMonthDetail]        = useState<MonthDetail | null>(null);
   const [monthDetailLoading, setMonthDetailLoading] = useState(false);
@@ -599,9 +608,10 @@ export default function DashboardPage() {
   const [compareLoading,     setCompareLoading]     = useState(false);
   const [weekdayTxs,         setWeekdayTxs]         = useState<{ date: string; amount: number; type: string; category: string }[]>([]);
   const [calendarMonth,      setCalendarMonth]      = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; });
-  const [calendarTxs,        setCalendarTxs]        = useState<{ date: string; amount: number; type: string }[]>([]);
+  const [calendarTxs,        setCalendarTxs]        = useState<{ date: string; amount: number; type: string; category: string; note: string | null }[]>([]);
   const [calendarOpen,       setCalendarOpen]       = useState(false);
   const [calendarView,       setCalendarView]       = useState<"calendar" | "heatmap">("calendar");
+  const [hoveredCalDay,      setHoveredCalDay]      = useState<string | null>(null);
   const [merchantOpen,       setMerchantOpen]       = useState(false);
   type GoalItem = { id: string; name: string; emoji: string; targetAmount: number; savedAmount: number; linkedSource: string | null; deadline: string | null; note: string };
   const [goals,          setGoals]          = useState<GoalItem[]>([]);
@@ -661,6 +671,32 @@ export default function DashboardPage() {
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [months, currentMonth]);
+
+  const fetchAiInsight = useCallback(async () => {
+    if (isDemo.current) return;
+    setAiInsightLoading(true);
+    setAiInsightErr(null);
+    try {
+      const res = await fetch(`/api/ai-insight?month=${currentMonth}`);
+      if (!res.ok) { setAiInsightErr("AI 分析暫時不可用"); return; }
+      const d = await res.json() as { insight?: string; charts?: { donut?: string | null; bar?: string | null }; meta?: { totalIncome: number; totalExpense: number; savingRate: string; overBudgetCount: number }; error?: string };
+      if (d.error) { setAiInsightErr(d.error); return; }
+      if (d.insight && d.meta) setAiInsight({ insight: d.insight, charts: d.charts ?? {}, meta: d.meta });
+      setNotionInsightUrl(null);
+    } catch { setAiInsightErr("網路錯誤"); }
+    finally { setAiInsightLoading(false); }
+  }, [currentMonth]);
+
+  const fetchAnomalies = useCallback(async () => {
+    if (isDemo.current) return;
+    setAnomalyLoading(true);
+    try {
+      const res = await fetch(`/api/anomaly-detection?month=${currentMonth}&lookback=4`);
+      const d = await res.json() as { anomalies?: { category: string; current: number; mean: number; stddev: number; zscore: number; prevMonths: number[] }[] };
+      setAnomalies(d.anomalies ?? []);
+    } catch { /* ignore */ }
+    finally { setAnomalyLoading(false); }
+  }, [currentMonth]);
 
   const fetchTxPage = useCallback(async (_page: number, append = false) => {
     setTxLoading(true);
@@ -777,6 +813,7 @@ export default function DashboardPage() {
     if (loadedTabs.current.has("charts")) return;
     loadedTabs.current.add("charts");
     fetchData();
+    fetchAnomalies();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
@@ -1007,8 +1044,8 @@ export default function DashboardPage() {
   useEffect(() => {
     if (activeTab !== "charts") return;
     const src = isDemo.current ? Promise.resolve(DEMO_SUMMARY.recent) :
-      fetch(`/api/transactions?limit=200&month=${calendarMonth}`).then(r => r.json()).then((d: { items: typeof calendarTxs }) => d.items);
-    src.then(items => setCalendarTxs(items.map((t: { date: string; amount: number; type: string }) => ({ date: t.date, amount: t.amount, type: t.type })))
+      fetch(`/api/transactions?limit=500&month=${calendarMonth}`).then(r => r.json()).then((d: { items: typeof calendarTxs }) => d.items);
+    src.then(items => setCalendarTxs((items as { date: string; amount: number; type: string; category: string; note: string | null }[]).map(t => ({ date: t.date, amount: t.amount, type: t.type, category: t.category ?? "", note: t.note ?? null })))
     ).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, calendarMonth]);
@@ -1316,6 +1353,23 @@ export default function DashboardPage() {
       } : prev);
     } catch (e) { console.error(e); }
     setMoodPickerId(null);
+  }
+
+  async function saveAmount(id: string, valStr: string) {
+    const val = parseFloat(valStr);
+    if (!valStr.trim() || isNaN(val) || val <= 0) { setEditingAmountId(null); return; }
+    try {
+      await fetch(`/api/transactions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: val }),
+      });
+      setTxData(prev => prev ? {
+        ...prev,
+        items: prev.items.map(tx => tx.id === id ? { ...tx, amount: val } : tx),
+      } : prev);
+    } catch (e) { console.error(e); }
+    setEditingAmountId(null);
   }
 
   async function deleteTx(id: string) {
@@ -1809,6 +1863,155 @@ export default function DashboardPage() {
                 </div>
               );
             })()}
+
+            {/* ── 異常支出警示 ── */}
+            {anomalyLoading && (
+              <div className="flex items-center gap-2 px-4 py-3 rounded-2xl text-[13px]"
+                style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+                <span className="text-[14px]">🔍</span>
+                <span style={{ color: "var(--text-muted)" }}>正在分析異常支出…</span>
+              </div>
+            )}
+            {!anomalyLoading && anomalies.length > 0 && (
+              <div className="space-y-2">
+                {anomalies.map(a => (
+                  <div key={a.category} className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                    style={{ background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.35)" }}>
+                    <span className="text-[18px]">📈</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[14px] font-bold" style={{ color: "#FB923C" }}>
+                        {a.category} 支出異常偏高
+                      </span>
+                      <span className="text-[13px] ml-2" style={{ color: "rgba(251,146,60,0.8)" }}>
+                        本月 NT${a.current.toLocaleString()}，過去平均 NT${a.mean.toLocaleString()}
+                      </span>
+                    </div>
+                    <span className="text-[13px] font-bold tabular-nums flex-shrink-0 px-2 py-0.5 rounded-lg"
+                      style={{ background: "rgba(251,146,60,0.15)", color: "#FB923C" }}>
+                      z={a.zscore}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ── AI 月度洞察 ── */}
+            <div className="rounded-2xl overflow-hidden"
+              style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "var(--card-shadow)" }}>
+              <div className="flex items-center justify-between px-5 py-3.5"
+                style={{ borderBottom: aiInsight || aiInsightLoading ? "1px solid var(--border-inner)" : "none" }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-[16px]">✨</span>
+                  <div>
+                    <p className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>AI 月度洞察</p>
+                    <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
+                      {currentMonth} · Claude 自動分析個人化建議
+                    </p>
+                  </div>
+                </div>
+                {!aiInsight && !aiInsightLoading && (
+                  <button
+                    onClick={fetchAiInsight}
+                    className="px-3 py-1.5 rounded-xl text-[13px] font-semibold text-white transition-opacity hover:opacity-80"
+                    style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)" }}>
+                    產生報告
+                  </button>
+                )}
+                {aiInsight && !aiInsightLoading && (
+                  <button
+                    onClick={() => { setAiInsight(null); setNotionInsightUrl(null); fetchAiInsight(); }}
+                    className="px-3 py-1.5 rounded-xl text-[13px] font-semibold transition-opacity hover:opacity-80"
+                    style={{ background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border-inner)" }}>
+                    重新分析
+                  </button>
+                )}
+              </div>
+              {aiInsightLoading && (
+                <div className="px-5 py-6 text-center">
+                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>✨ Claude 正在分析中，請稍候…</p>
+                </div>
+              )}
+              {aiInsightErr && !aiInsightLoading && (
+                <div className="px-5 py-4">
+                  <p className="text-[14px]" style={{ color: "#F87171" }}>{aiInsightErr}</p>
+                </div>
+              )}
+              {aiInsight && !aiInsightLoading && (
+                <div className="px-5 py-4 space-y-4">
+                  {/* meta 摘要列 */}
+                  <div className="flex gap-3 flex-wrap text-[13px]">
+                    <span className="px-2.5 py-1 rounded-lg" style={{ background: "rgba(16,185,129,0.1)", color: "#10B981" }}>
+                      儲蓄率 {aiInsight.meta.savingRate}%
+                    </span>
+                    {aiInsight.meta.overBudgetCount > 0 && (
+                      <span className="px-2.5 py-1 rounded-lg" style={{ background: "rgba(239,68,68,0.1)", color: "#EF4444" }}>
+                        {aiInsight.meta.overBudgetCount} 個分類超標
+                      </span>
+                    )}
+                    {anomalies.length > 0 && (
+                      <span className="px-2.5 py-1 rounded-lg" style={{ background: "rgba(251,146,60,0.1)", color: "#FB923C" }}>
+                        {anomalies.length} 個異常支出
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 洞察文字 */}
+                  <div className="text-[14px] leading-relaxed whitespace-pre-wrap rounded-xl px-4 py-3"
+                    style={{ background: "var(--bg-input)", color: "var(--text-primary)", border: "1px solid var(--border-inner)" }}>
+                    {aiInsight.insight}
+                  </div>
+
+                  {/* 圖表 */}
+                  {(aiInsight.charts?.donut || aiInsight.charts?.bar) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {aiInsight.charts.donut && (
+                        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border-inner)" }}>
+                          <p className="text-[12px] font-semibold px-3 pt-2 pb-1" style={{ color: "var(--text-muted)" }}>支出分類佔比</p>
+                          <img src={aiInsight.charts.donut} alt="支出分類佔比" className="w-full" loading="lazy" />
+                        </div>
+                      )}
+                      {aiInsight.charts.bar && (
+                        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border-inner)" }}>
+                          <p className="text-[12px] font-semibold px-3 pt-2 pb-1" style={{ color: "var(--text-muted)" }}>月份對比（本月 vs 上月）</p>
+                          <img src={aiInsight.charts.bar} alt="月份對比" className="w-full" loading="lazy" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Notion 同步 */}
+                  <div className="flex items-center gap-3 pt-1">
+                    <button
+                      onClick={async () => {
+                        setNotionSyncingInsight(true);
+                        try {
+                          const res = await fetch("/api/ai-insight", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ month: currentMonth, insight: aiInsight.insight, charts: aiInsight.charts }),
+                          });
+                          const data = await res.json() as { success?: boolean; url?: string; error?: string };
+                          if (data.url) setNotionInsightUrl(data.url);
+                          else alert(data.error ?? "同步失敗");
+                        } catch { alert("網路錯誤"); }
+                        finally { setNotionSyncingInsight(false); }
+                      }}
+                      disabled={notionSyncingInsight}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[13px] font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
+                      style={{ background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border-inner)" }}>
+                      <span>{notionSyncingInsight ? "同步中…" : "📝 同步到 Notion"}</span>
+                    </button>
+                    {notionInsightUrl && (
+                      <a href={notionInsightUrl} target="_blank" rel="noopener noreferrer"
+                        className="text-[13px] font-semibold transition-opacity hover:opacity-80"
+                        style={{ color: "var(--accent)" }}>
+                        ✅ 查看 Notion 頁面 →
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* ── 分類預算快覽列 ── */}
             {showCard("budget-overview") && budgetOverview.filter(b => b.amount > 0).length > 0 && (() => {
@@ -3082,30 +3285,87 @@ export default function DashboardPage() {
                               if (!day) return <div key={`e${i}`} />;
                               const key = `${calendarMonth}-${String(day).padStart(2,"0")}`;
                               const d = dayMap.get(key);
-                              const net = d ? d.income - d.expense : 0;
-                              const intensity = d ? Math.min(Math.abs(net) / maxAbs, 1) : 0;
+                              const exp = dayExpMap.get(key) ?? 0;
                               const isToday = key === todayKey;
+                              const isHovered = hoveredCalDay === key;
+                              // 支出強度色
+                              const expIntensity = exp > 0 ? Math.min(exp / maxExp, 1) : 0;
+                              const bgColor = exp > 0
+                                ? `rgba(239,68,68,${0.06 + expIntensity * 0.22})`
+                                : d?.income ? "rgba(16,185,129,0.06)" : "transparent";
+                              // 當天交易明細
+                              const dayTxs = calendarTxs.filter(t => t.date === key);
                               return (
-                                <div key={key} className="rounded-lg p-1.5 min-h-[52px] flex flex-col"
+                                <div key={key} className="relative rounded-lg p-1.5 flex flex-col cursor-pointer select-none"
                                   style={{
-                                    background: d ? (net >= 0 ? `rgba(16,185,129,${0.08 + intensity * 0.25})` : `rgba(239,68,68,${0.08 + intensity * 0.25})`) : "transparent",
-                                    border: isToday ? "1px solid var(--accent)" : "1px solid transparent",
-                                  }}>
-                                  <span className="text-[13px] font-semibold leading-none mb-1"
+                                    minHeight: 52,
+                                    background: isHovered ? (exp > 0 ? `rgba(239,68,68,${0.12 + expIntensity * 0.22})` : "var(--bg-input)") : bgColor,
+                                    border: isToday ? "1.5px solid var(--accent)" : isHovered ? "1px solid var(--border)" : "1px solid transparent",
+                                    transition: "background 0.12s, border 0.12s",
+                                  }}
+                                  onMouseEnter={() => setHoveredCalDay(key)}
+                                  onMouseLeave={() => setHoveredCalDay(null)}>
+                                  {/* 日期數字 */}
+                                  <span className="text-[13px] font-semibold leading-none mb-0.5"
                                     style={{ color: isToday ? "var(--accent)" : "var(--text-muted)" }}>{day}</span>
-                                  {d && (
-                                    <span className="text-[13px] tabular-nums font-bold leading-tight"
-                                      style={{ color: net >= 0 ? "#10B981" : "#F87171" }}>
-                                      {net >= 0 ? "+" : "−"}{Math.abs(net) >= 1000 ? `${(Math.abs(net)/1000).toFixed(1)}k` : fmt(Math.abs(net))}
+                                  {/* 支出金額（主顯示） */}
+                                  {exp > 0 && (
+                                    <span className="text-[12px] tabular-nums font-bold leading-tight"
+                                      style={{ color: "#F87171" }}>
+                                      −{exp >= 1000 ? `${(exp/1000).toFixed(1)}k` : fmt(exp)}
                                     </span>
+                                  )}
+                                  {/* 收入（有收入但無支出時顯示） */}
+                                  {exp === 0 && (d?.income ?? 0) > 0 && (
+                                    <span className="text-[12px] tabular-nums font-bold leading-tight" style={{ color: "#10B981" }}>
+                                      +{(d!.income) >= 1000 ? `${(d!.income/1000).toFixed(1)}k` : fmt(d!.income)}
+                                    </span>
+                                  )}
+                                  {/* Hover 明細 popup */}
+                                  {isHovered && dayTxs.length > 0 && (
+                                    <div className="absolute z-50 rounded-xl p-3 shadow-2xl"
+                                      style={{
+                                        top: "calc(100% + 4px)",
+                                        left: "50%", transform: "translateX(-50%)",
+                                        minWidth: 180, maxWidth: 240,
+                                        background: "var(--bg-card)",
+                                        border: "1px solid var(--border)",
+                                      }}>
+                                      <p className="text-[12px] font-bold mb-2" style={{ color: "var(--text-sub)" }}>{key}</p>
+                                      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                                        {dayTxs.map((t, idx) => (
+                                          <div key={idx} className="flex items-center gap-1.5">
+                                            <span className="text-[11px] px-1.5 py-0.5 rounded flex-shrink-0"
+                                              style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>
+                                              {t.category}
+                                            </span>
+                                            <span className="text-[12px] flex-1 truncate" style={{ color: "var(--text-sub)" }}>
+                                              {t.note || t.category}
+                                            </span>
+                                            <span className="text-[12px] font-bold tabular-nums flex-shrink-0"
+                                              style={{ color: t.type === "收入" ? "#10B981" : "#F87171" }}>
+                                              {t.type === "收入" ? "+" : "−"}{fmt(t.amount)}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      {dayTxs.length > 1 && (
+                                        <div className="mt-2 pt-2 flex justify-between text-[12px]" style={{ borderTop: "1px solid var(--border-inner)", color: "var(--text-muted)" }}>
+                                          <span>{dayTxs.length} 筆</span>
+                                          {exp > 0 && <span style={{ color: "#F87171" }}>支出 −{fmt(exp)}</span>}
+                                          {(d?.income ?? 0) > 0 && <span style={{ color: "#10B981" }}>收入 +{fmt(d!.income)}</span>}
+                                        </div>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               );
                             })}
                           </div>
-                          <div className="flex items-center gap-4 mt-3 text-[13px]" style={{ color: "var(--text-muted)" }}>
-                            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "rgba(16,185,129,0.4)" }} />收入 &gt; 支出</span>
-                            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "rgba(239,68,68,0.4)" }} />支出 &gt; 收入</span>
+                          <div className="flex items-center gap-4 mt-3 text-[12px]" style={{ color: "var(--text-muted)" }}>
+                            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "rgba(239,68,68,0.3)" }} />有支出</span>
+                            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "rgba(16,185,129,0.15)" }} />純收入</span>
+                            <span className="ml-auto">hover 查看明細</span>
                           </div>
                         </>
                       ) : (
@@ -4117,12 +4377,36 @@ export default function DashboardPage() {
                             </div>
                           </div>
 
-                          {/* Amount */}
+                          {/* Amount — click to inline edit */}
                           <div className="text-right flex-shrink-0">
-                            <p className="text-[16px] font-black"
-                              style={{ color: tx.type === "收入" ? "#10B981" : "#EF4444" }}>
-                              {tx.type === "收入" ? "+" : "−"}NT$ {fmt(tx.amount)}
-                            </p>
+                            {editingAmountId === tx.id ? (
+                              <input
+                                type="number" min="0.01" step="0.01"
+                                autoFocus
+                                value={editingAmountVal}
+                                onChange={e => setEditingAmountVal(e.target.value)}
+                                onBlur={() => saveAmount(tx.id, editingAmountVal)}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter") saveAmount(tx.id, editingAmountVal);
+                                  if (e.key === "Escape") setEditingAmountId(null);
+                                }}
+                                className="w-28 text-right text-[15px] font-black rounded-lg px-2 py-0.5 outline-none"
+                                style={{
+                                  background: "var(--bg-input)",
+                                  border: `1px solid ${tx.type === "收入" ? "#10B981" : "#EF4444"}`,
+                                  color: tx.type === "收入" ? "#10B981" : "#EF4444",
+                                }}
+                              />
+                            ) : (
+                              <p
+                                className="text-[16px] font-black cursor-pointer rounded px-1 transition-colors hover:bg-white/5"
+                                title="點擊編輯金額"
+                                style={{ color: tx.type === "收入" ? "#10B981" : "#EF4444" }}
+                                onClick={() => { setEditingAmountId(tx.id); setEditingAmountVal(String(tx.amount)); }}
+                              >
+                                {tx.type === "收入" ? "+" : "−"}NT$ {fmt(tx.amount)}
+                              </p>
+                            )}
                           </div>
 
                           {/* Split — hover only */}
@@ -4226,21 +4510,44 @@ export default function DashboardPage() {
                   )}
                 </div>
               ) : (
-                <div className="py-16 flex flex-col items-center gap-3">
-                  <p className="text-4xl">📋</p>
-                  <p className="text-[15px] font-semibold" style={{ color: "var(--text-sub)" }}>尚無交易記錄</p>
-                  <p className="text-[14px] text-center max-w-xs" style={{ color: "var(--text-muted)" }}>
-                    透過 LINE Bot 傳送消費訊息，或前往「匯入資料」上傳銀行 CSV 對帳單
-                  </p>
-                  <div className="flex gap-2 mt-1">
-                    <button onClick={() => setActiveTab("import")}
-                      className="px-4 py-2 rounded-xl text-[14px] font-semibold text-white"
-                      style={{ background: "var(--btn-gradient)" }}>匯入資料 →</button>
-                    <button onClick={() => setAddModal(true)}
-                      className="px-4 py-2 rounded-xl text-[14px] font-semibold"
-                      style={{ border: "1px solid var(--border)", color: "var(--text-sub)" }}>手動新增</button>
-                  </div>
-                </div>
+                (() => {
+                  const hasFilter = !!(txSearch || txFilterCat || txTypeFilter || txDateFrom || txDateTo || txAmountMin || txAmountMax || txSourceFilter.length > 0);
+                  return hasFilter ? (
+                    <div className="py-16 flex flex-col items-center gap-3">
+                      <p className="text-4xl">🔍</p>
+                      <p className="text-[15px] font-semibold" style={{ color: "var(--text-sub)" }}>找不到符合條件的交易</p>
+                      <p className="text-[14px] text-center max-w-xs" style={{ color: "var(--text-muted)" }}>
+                        試試調整搜尋條件，或清除篩選查看全部記錄
+                      </p>
+                      <button
+                        onClick={() => {
+                          setTxSearch(""); setTxFilterCat(""); setTxTypeFilter("");
+                          setTxDateFrom(""); setTxDateTo(""); setTxAmountMin(""); setTxAmountMax("");
+                          setTxSourceFilter([]);
+                        }}
+                        className="mt-1 px-5 py-2 rounded-xl text-[14px] font-semibold"
+                        style={{ background: "var(--btn-gradient)", color: "#fff" }}>
+                        清除篩選
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="py-16 flex flex-col items-center gap-3">
+                      <p className="text-4xl">📋</p>
+                      <p className="text-[15px] font-semibold" style={{ color: "var(--text-sub)" }}>尚無交易記錄</p>
+                      <p className="text-[14px] text-center max-w-xs" style={{ color: "var(--text-muted)" }}>
+                        透過 LINE Bot 傳送消費訊息，或前往「匯入資料」上傳銀行 CSV 對帳單
+                      </p>
+                      <div className="flex gap-2 mt-1">
+                        <button onClick={() => setActiveTab("import")}
+                          className="px-4 py-2 rounded-xl text-[14px] font-semibold text-white"
+                          style={{ background: "var(--btn-gradient)" }}>匯入資料 →</button>
+                        <button onClick={() => setAddModal(true)}
+                          className="px-4 py-2 rounded-xl text-[14px] font-semibold"
+                          style={{ border: "1px solid var(--border)", color: "var(--text-sub)" }}>手動新增</button>
+                      </div>
+                    </div>
+                  );
+                })()
               )}
             </Card>
           </div>
