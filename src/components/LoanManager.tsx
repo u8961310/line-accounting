@@ -189,6 +189,7 @@ function ModalFooter({ onCancel, onConfirm, confirmLabel }: { onCancel: () => vo
 export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
   const [loans, setLoans] = useState<LoanItem[]>([]);
   const [creditCards, setCreditCards] = useState<CreditCardItem[]>([]);
+  const [subItems,   setSubItems]   = useState<{ paymentMethod: string; monthlyAmount: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [loanTab, setLoanTab] = useState<"loans" | "cards">("loans");
@@ -242,14 +243,17 @@ export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
         setCreditCards((DEMO_CREDIT_CARDS_RAW as RawCreditCard[]).map(parseCreditCard));
         return;
       }
-      const [lRes, cRes] = await Promise.all([
+      const [lRes, cRes, sRes] = await Promise.all([
         fetch("/api/loans"),
         fetch("/api/credit-cards"),
+        fetch("/api/subscriptions"),
       ]);
       const rawLoans = await lRes.json() as RawLoan[];
       const rawCards = await cRes.json() as RawCreditCard[];
+      const rawSubs  = await sRes.json() as { items: { paymentMethod: string; monthlyAmount: number }[] };
       setLoans(rawLoans.map(parseLoan));
       setCreditCards(rawCards.map(parseCreditCard));
+      setSubItems(rawSubs.items ?? []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -783,6 +787,17 @@ export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
                             <span className="ml-1 font-bold">· NT$ {fmt(nextDue.totalAmount - nextDue.paidAmount)}</span>
                           </p>
                         )}
+                        {/* Row 4: subscription burden */}
+                        {(() => {
+                          const cardSubs = subItems.filter(s => s.paymentMethod === card.name);
+                          if (cardSubs.length === 0) return null;
+                          const subMonthly = cardSubs.reduce((s, i) => s + i.monthlyAmount, 0);
+                          return (
+                            <p className="text-[13px] mt-1" style={{ color: "#06B6D4" }}>
+                              🔁 綁定 {cardSubs.length} 項訂閱・月費 NT$ {fmt(subMonthly)}
+                            </p>
+                          );
+                        })()}
                       </div>
                       <div className="text-right flex-shrink-0">
                         <p className="text-[22px] font-black tabular-nums" style={{ color: "#F59E0B" }}>NT$ {fmt(card.currentBalance)}</p>

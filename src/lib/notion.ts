@@ -1,7 +1,120 @@
 import { Client } from "@notionhq/client";
+import type { PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
 
 function getNotionClient(): Client {
   return new Client({ auth: process.env.NOTION_TOKEN });
+}
+
+// ── Subscriptions ────────────────────────────────────────────────────────────
+
+export interface SubItem {
+  id:              string;
+  name:            string;
+  startDate:       string | null;
+  nextBillingDate: string | null;
+  paymentMethod:   string;
+  tags:            string[];
+  cycle:           string;
+  fee:             number;
+  monthlyAmount:   number;
+  totalSpent:      number;
+}
+
+const _MONTHLY_CYCLES = new Set(["每月", "月繳", "月付", "月"]);
+const _YEARLY_CYCLES  = new Set(["每年", "年繳", "年付", "年"]);
+
+function calcNextBillingDate(startDate: string | null, cycle: string): string | null {
+  if (!startDate) return null;
+  const start = new Date(startDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (_MONTHLY_CYCLES.has(cycle)) {
+    const day = start.getDate();
+    let next = new Date(today.getFullYear(), today.getMonth(), day);
+    if (next <= today) next = new Date(today.getFullYear(), today.getMonth() + 1, day);
+    return next.toISOString().split("T")[0];
+  }
+
+  if (_YEARLY_CYCLES.has(cycle)) {
+    let next = new Date(today.getFullYear(), start.getMonth(), start.getDate());
+    if (next <= today) next = new Date(today.getFullYear() + 1, start.getMonth(), start.getDate());
+    return next.toISOString().split("T")[0];
+  }
+
+  return null;
+}
+
+function extractNumber(prop: unknown): number {
+  if (!prop || typeof prop !== "object") return 0;
+  const p = prop as Record<string, unknown>;
+  if (p.type === "number")  return (p.number  as number) ?? 0;
+  if (p.type === "formula") {
+    const f = p.formula as Record<string, unknown>;
+    if (f.type === "number") return (f.number as number) ?? 0;
+  }
+  return 0;
+}
+
+export async function getSubscriptionsFromNotion(): Promise<SubItem[]> {
+  if (!process.env.NOTION_TOKEN || !process.env.NOTION_SUBSCRIPTIONS_DB_ID) return [];
+
+  const notion = getNotionClient();
+  const databaseId = process.env.NOTION_SUBSCRIPTIONS_DB_ID;
+  const results: SubItem[] = [];
+  let cursor: string | undefined;
+
+  do {
+    const response = await notion.databases.query({
+      database_id: databaseId,
+      start_cursor: cursor,
+      page_size: 100,
+    });
+
+    for (const page of response.results) {
+      if (page.object !== "page") continue;
+      const p = (page as PageObjectResponse).properties;
+
+      const titleProp = p["產品"];
+      const name = titleProp?.type === "title"
+        ? titleProp.title.map(t => t.plain_text).join("")
+        : "";
+
+      const dateProp = p["訂閱開始日"];
+      const startDate = dateProp?.type === "date" ? (dateProp.date?.start ?? null) : null;
+
+      const paymentProp = p["付款方式"];
+      const paymentMethod = paymentProp?.type === "select" ? (paymentProp.select?.name ?? "") : "";
+
+      const tagsProp = p["分類標籤"];
+      const tags = tagsProp?.type === "multi_select" ? tagsProp.multi_select.map(t => t.name) : [];
+
+      const cycleProp = p["訂閱週期"];
+      const cycle = cycleProp?.type === "select" ? (cycleProp.select?.name ?? "") : "";
+
+      // 已取消訂閱 → 跳過
+      const cancelledProp = p["取消訂閱"];
+      const cancelled = cancelledProp?.type === "checkbox" ? cancelledProp.checkbox : false;
+      if (cancelled) continue;
+
+      results.push({
+        id:              page.id,
+        name,
+        startDate,
+        nextBillingDate: calcNextBillingDate(startDate, cycle),
+        paymentMethod,
+        tags,
+        cycle,
+        fee:           extractNumber(p["訂閱費"]),
+        monthlyAmount: extractNumber(p["每月金額"]),
+        totalSpent:    extractNumber(p["總計花費"]),
+      });
+    }
+
+    cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
+  } while (cursor);
+
+  return results.sort((a, b) => b.monthlyAmount - a.monthlyAmount);
 }
 
 export interface TransactionRecord {

@@ -271,29 +271,8 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 
 ---
 
-### Phase A — 月底自動財報（🔴 高）
-> 讓 LINE Bot 主動工作，不需要手動查看 Dashboard
-- [ ] 申請 LINE Messaging API Push Token
-- [ ] 建立推播 API（`/api/push-report`），串接 get_summary / get_balances / get_loans
-- [ ] 設定 cron 排程：每月 28 日 20:00（`0 20 28 * *`）
-- [ ] 測試驗收：LINE 收到格式正確的月底財報訊息
-
-### Phase C — 異常支出警示（🔴 高）
-> 每筆記帳後自動比對預算，超標主動推播
-- [ ] webhook 記帳成功後呼叫預算比對邏輯
-- [ ] 超標時透過 LINE Messaging API Push 主動推播（閾值見異常支出閾值表）
-- [ ] 錯誤重試機制：推送失敗不影響記帳主流程，背景 retry 最多 3 次
-
-### LINE Bot 強化（🔴 高）
-- [ ] 自然語言查詢（「上週吃飯花多少」→ 串接 get_transactions + get_spending_trend）
-- [ ] 查詢指令（輸入「餘額」「本月支出」直接回覆摘要）
-- [ ] Quick Reply（記帳後附分類按鈕，一鍵修正錯誤分類）
-- [ ] 收據照片 OCR（傳圖片 → Claude Vision 解析金額/品項自動記帳）
-- [ ] 帳單到期提醒（信用卡截止日前 3 天自動 LINE 推播）
-- [ ] 薪資入帳確認（偵測大額收入自動推播確認）
-- [ ] 週報自動推送（每週一 9:00 自動推送上週支出摘要）
-- [ ] 每日早報（每天 8:00 推送昨日支出 + 本月預算剩餘）
-- [ ] 每日記帳提醒：晚上 9 點若當天無任何交易，自動推播「今天還沒記帳」；`/api/push-reminders` + Vercel Cron `0 13 * * *`
+### Phase A / C / LINE Bot 強化
+> 已移至 kogao 專案（`d:\code\kogao\CLAUDE.md`）管理
 
 ### 資料管理強化（🟡 中）
 - [x] 交易分割（一筆拆成多分類，如：超市 $500 → 飲食 $300 + 日用品 $200）
@@ -321,7 +300,7 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] **信用卡頁面顯示訂閱負擔**：LoanManager 信用卡列表旁顯示「綁定 X 項訂閱・月費 NT$Y」（比對付款方式欄位）
 - [x] **分類標籤圓餅圖**：訂閱頁加「by 標籤」分組視圖，顯示各類別月費佔比
 - ~~**年繳省錢試算**：月繳項目旁顯示「改年繳每年可省 NT$X」提示~~ → 不需要
-- [ ] **LINE 推播**：年繳訂閱到期前 N 天自動推播提醒（串接 push API）
+- [ ] **LINE 推播**：年繳訂閱到期前 N 天自動推播提醒（由 kogao 負責呼叫）
 - [x] **訂閱 vs 交易比對**：新增 `/api/subscriptions/verify`，比對本月交易與 Notion 訂閱清單（模糊比對名稱），顯示「已扣款 / 未找到交易」狀態於訂閱管理頁下方
 - ~~**外幣訂閱換算顯示**：Notion DB 加 `原幣金額` + `幣別` 欄位，非 TWD 時顯示「USD 9.99 ≈ NT$ 320」，匯率可 hardcode 或串公開 API~~ → 不需要
 - ~~**信用卡回饋試算**：訂閱管理頁新增回饋試算區塊，依付款方式分組月費 × 可設定回饋率，顯示每月可賺回饋金額，設定值存 localStorage~~ → 不需要
@@ -378,12 +357,8 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [ ] Tab nav 水平捲動：手機上 Tab 超出螢幕時可左右滑動
 - [ ] Modal 全螢幕：手機上新增記帳 modal 改為 bottom sheet 全螢幕
 
-### 通知與推播（🟡 中）
-- [ ] 財務健康評分月推播：每月初自動計算，若比上月下降 ≥10 分則 LINE 推播提醒
-- [ ] 單筆消費閾值提醒：使用者自訂「單筆超過 X 元時 LINE 推播」（可設多個閾值）
-- [ ] 目標達成里程碑推播：財務目標達到 25% / 50% / 75% / 100% 時 LINE 推播慶賀＋剩餘缺口
-- [ ] 研究所存款進度自動推播：每月初計算儲蓄缺口，落後進度 ≥10% 時推播「距 2028/09 還有 X 個月，每月需存 Y 元」
-- [ ] 帳戶餘額警戒線：為每個銀行帳戶設定最低警戒金額，餘額更新後低於閾值時 LINE 推播提醒（`BankBalance` 加 `warningThreshold` 欄位，匯入 CSV 後自動檢查，串接 LINE push）
+### 通知與推播
+> 已移至 kogao 專案（`d:\code\kogao\CLAUDE.md`）管理
 
 ### AI 洞察（🔴 高）
 - [x] AI 月度洞察報告：每月底用 Claude API 分析當月交易，自動生成個人化建議（支出異常、預算執行、目標進度、研究所儲蓄缺口），結果顯示在 Dashboard 並可 LINE 推播

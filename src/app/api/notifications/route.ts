@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSubscriptionsFromNotion } from "@/lib/notion";
 
 export const dynamic = "force-dynamic";
 
 export type NotifSeverity = "danger" | "warn" | "info";
-export type NotifType     = "budget" | "bill" | "goal";
+export type NotifType     = "budget" | "bill" | "goal" | "subscription";
 
 export interface AppNotification {
   id:       string;
@@ -29,7 +30,7 @@ export async function GET(): Promise<NextResponse> {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-  const [budgets, transactions, creditCards, goals] = await Promise.all([
+  const [budgets, transactions, creditCards, goals, subscriptions] = await Promise.all([
     prisma.budget.findMany({ where: { userId: user.id } }),
     prisma.transaction.findMany({
       where: { userId: user.id, date: { gte: monthStart, lt: monthEnd }, NOT: { category: "轉帳" } },
@@ -40,6 +41,7 @@ export async function GET(): Promise<NextResponse> {
       include: { bills: { where: { status: { not: "paid" } }, orderBy: { dueDate: "asc" } } },
     }),
     prisma.financialGoal.findMany({ where: { userId: user.id } }),
+    getSubscriptionsFromNotion(),
   ]);
 
   const notes: AppNotification[] = [];
@@ -146,6 +148,25 @@ export async function GET(): Promise<NextResponse> {
         body:     `已達 ${Math.round(progress)}%，再存 NT$ ${Math.round(target - saved).toLocaleString("zh-TW")} 即可完成`,
       });
     }
+  }
+
+  // ── 4. 年繳訂閱即將扣款 ────────────────────────────────────────────────────
+  const YEARLY_CYCLES = new Set(["每年", "年繳", "年付", "年"]);
+  for (const sub of subscriptions) {
+    if (!YEARLY_CYCLES.has(sub.cycle) || !sub.nextBillingDate) continue;
+
+    const billingDate = new Date(sub.nextBillingDate);
+    const daysLeft    = Math.ceil((billingDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (daysLeft < 0 || daysLeft > 14) continue;
+
+    notes.push({
+      id:       `sub-yearly-${sub.id}`,
+      type:     "subscription",
+      severity: daysLeft <= 3 ? "danger" : "warn",
+      title:    `${sub.name} 年費 ${daysLeft === 0 ? "今天" : `${daysLeft} 天後`}扣款`,
+      body:     `NT$ ${Math.round(sub.fee).toLocaleString("zh-TW")}，扣款日 ${billingDate.toLocaleDateString("zh-TW")}`,
+    });
   }
 
   // Sort: danger → warn → info

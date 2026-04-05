@@ -72,9 +72,9 @@ const FLOW: FlowSection[] = [
       { icon: "🎯", label: "預算控制",    sub: "各分類上限 + 超標警示 + 歷史建議預算",            color: "#EF4444" },
       { icon: "🏦", label: "帳戶 & 淨資產", sub: "銀行餘額、淨資產快照",                         color: "#10B981" },
       { icon: "💳", label: "信用卡 & 貸款", sub: "帳單管理、還款時間軸",                         color: "#F59E0B" },
-      { icon: "🔁", label: "訂閱偵測",    sub: "自動識別每月重複支出（±5% 容忍）",               color: "#06B6D4" },
+      { icon: "🔁", label: "訂閱管理",    sub: "從 Notion 資料庫讀取，月費 / 年費分組顯示",     color: "#06B6D4" },
       { icon: "✨", label: "AI 洞察",     sub: "月度毒舌分析 + z-score 異常偵測 + QuickChart 圖表", color: "#8B5CF6" },
-      { icon: "📈", label: "進階分析",    sub: "FIRE / 退休 / 帳戶流量 / 年報",                  color: "#6366F1" },
+      { icon: "📈", label: "進階分析",    sub: "FIRE / 退休 / 帳戶流量 / 年報 / 消費性格",        color: "#6366F1" },
       { icon: "📍", label: "財務里程碑",  sub: "所有目標 + 研究所 + FIRE 統一橫向時間軸",          color: "#8B5CF6" },
     ],
   },
@@ -121,7 +121,7 @@ const WORKFLOWS: WorkflowPhase[] = [
     steps: [
       { icon: "📊", title: "確認本週支出",         desc: "交易記錄 → 快速日期按鈕「本週」，確認分類是否正確",                                    tag: "10 分鐘", tagColor: "#3B82F6" },
       { icon: "📈", title: "查看異常支出警示",     desc: "圖表 Tab 頂端橘色 Banner — z-score 自動偵測超出歷史平均的分類",                        tag: "自動",   tagColor: "#FB923C" },
-      { icon: "🔁", title: "識別訂閱費用",         desc: "訂閱偵測 Tab → 確認新偵測的重複扣款是否為訂閱",                                        tag: "選做",   tagColor: "#06B6D4" },
+      { icon: "🔁", title: "查看訂閱費用",         desc: "訂閱管理 Tab → 瀏覽 Notion 訂閱清單，月費 / 年費分組，可依付款方式篩選",              tag: "選做",   tagColor: "#06B6D4" },
     ],
   },
   {
@@ -137,6 +137,7 @@ const WORKFLOWS: WorkflowPhase[] = [
       { icon: "🏦", title: "更新帳戶餘額",          desc: "圖表分析 → 帳戶餘額，對照銀行 App 確認數字一致",                                      tag: "建議", tagColor: "#F59E0B" },
       { icon: "📄", title: "列印月度財報",          desc: "Header → 工具 → 列印月報，產出正式 HTML 財務報表",                                    tag: "選做", tagColor: "#10B981" },
       { icon: "💰", title: "執行儲蓄轉帳",          desc: "儲蓄規劃 → 確認當月可存金額，依建議分配轉入各目標帳戶",                               tag: "選做", tagColor: "#10B981" },
+      { icon: "🔍", title: "比對訂閱扣款",          desc: "訂閱管理 Tab → 頁面底部「本月扣款比對」→ 開始比對，確認每項訂閱是否已找到對應交易",      tag: "選做", tagColor: "#06B6D4" },
     ],
   },
 ];
@@ -154,7 +155,7 @@ const QUICK_REF = [
   { icon: "🏦", action: "管理貸款還款明細",           where: "負債管理 Tab",                           color: "#F59E0B" },
   { icon: "💳", action: "查看信用卡帳單",             where: "負債管理 Tab → 信用卡",                  color: "#06B6D4" },
   { icon: "📅", action: "收支日曆 / 熱力圖",          where: "交易記錄 Tab → 📅 日曆",                 color: "#06B6D4" },
-  { icon: "🔁", action: "識別訂閱自動扣款",           where: "訂閱偵測 Tab",                           color: "#10B981" },
+  { icon: "🔁", action: "查看訂閱費用總覽",           where: "訂閱管理 Tab（資料來源：Notion）",        color: "#06B6D4" },
   { icon: "📈", action: "FIRE / 退休 / 年報分析",    where: "Header → 進階分析",                      color: "#6366F1" },
   { icon: "🎓", action: "研究所 / 財務規劃",          where: "Header → 財務規劃",                      color: "#6366F1" },
   { icon: "📍", action: "財務里程碑時間軸",           where: "Header → 財務規劃 → 里程碑時間軸",        color: "#8B5CF6" },
@@ -163,6 +164,8 @@ const QUICK_REF = [
   { icon: "🛡️", action: "備份 / 還原所有交易",       where: "工具 → 匯入資料 → 備份 / 還原",         color: "#94A3B8" },
   { icon: "🤖", action: "Claude 批次清理「其他」分類", where: "工具 → 分類清理",                         color: "#8B5CF6" },
   { icon: "🏷️", action: "支出心情分佈（衝動/計畫/必要）", where: "圖表 Tab → 支出心情分佈圖",             color: "#EF4444" },
+  { icon: "🧠", action: "消費性格 AI 報告",              where: "Header → 進階分析 → 消費性格",          color: "#8B5CF6" },
+  { icon: "🤖", action: "備注 AI 整理（英文→中文）",     where: "Header → 工具 → 備注整理",              color: "#8B5CF6" },
 ];
 
 // ── Keyboard Shortcuts ────────────────────────────────────────────────────────
@@ -283,6 +286,20 @@ const FEATURES: FeatureSection[] = [
     note: "每次點開鈴鐺時從最新資料重新計算，無需手動刷新。",
   },
   {
+    icon: "🔁",
+    title: "訂閱管理",
+    color: "#06B6D4",
+    items: [
+      { label: "訂閱管理 Tab → 資料來源為 Notion 訂閱資料庫" },
+      { label: "月費 / 年費自動分組，各組顯示小計（年費組另顯示折合月費）" },
+      { label: "付款方式彩色堆疊分布圖，快速看出哪個帳戶負擔最重" },
+      { label: "依付款方式篩選 + 關鍵字搜尋（名稱 / 標籤 / 付款方式）" },
+      { label: "Notion 勾選「取消訂閱」後自動排除，不計入金額也不顯示" },
+      { label: "頁面底部「本月扣款比對」：模糊比對訂閱名稱與本月交易，顯示已扣款 ✅ / 未找到 ❓" },
+    ],
+    note: "需設定環境變數 NOTION_SUBSCRIPTIONS_DB_ID；在 Notion 維護訂閱清單即可自動同步。",
+  },
+  {
     icon: "📅",
     title: "收支日曆 & 熱力圖",
     color: "#06B6D4",
@@ -365,6 +382,19 @@ const FEATURES: FeatureSection[] = [
       { label: "在交易記錄中點「🏷 性質」標記每筆消費的心情類型" },
     ],
     note: "標記越多筆，趨勢越準確；建議至少標記 30% 支出後圖表才有參考價值。",
+  },
+  {
+    icon: "🧠",
+    title: "消費性格 AI 報告",
+    color: "#8B5CF6",
+    items: [
+      { label: "進階分析 → 消費性格 → 點「生成報告」分析近 3 個月交易" },
+      { label: "消費性格摘要：AI 直接描述你的消費特徵" },
+      { label: "衝動消費比例 vs 必要支出比例（%）" },
+      { label: "前 6 大分類佔比長條 + 星期消費分佈直條圖" },
+      { label: "高風險分類標示 + AI 3 條具體行為建議" },
+    ],
+    note: "使用 claude-haiku 生成，消費資料只在本機運算，不上傳第三方。",
   },
 ];
 

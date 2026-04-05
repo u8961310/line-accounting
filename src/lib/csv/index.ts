@@ -17,6 +17,7 @@ import { taishinCcAdapter } from "./adapters/taishin_cc";
 import { createAiFallbackAdapter, parseWithAiFallback } from "./adapters/ai_fallback";
 import { parseXls } from "./xls";
 import { batchCategorize } from "./categorizer";
+import { getSubscriptionsFromNotion } from "../notion";
 import { prisma } from "../db";
 
 const ADAPTERS: Record<Exclude<BankSource, "unknown" | "sinopac_cc">, CsvAdapter> = {
@@ -38,6 +39,32 @@ function getAdapter(source: BankSource): CsvAdapter {
   if (source === "sinopac_cc") return createAiFallbackAdapter("sinopac_cc");
   if (source === "unknown")    return createAiFallbackAdapter("unknown");
   return ADAPTERS[source];
+}
+
+function normalizeForMatch(s: string) {
+  return s.toLowerCase().replace(/[\s\-_.,·・\(\)（）【】「」『』]/g, "");
+}
+
+async function applySubscriptionCategories(transactions: ParsedTransaction[]): Promise<ParsedTransaction[]> {
+  try {
+    const subs = await getSubscriptionsFromNotion();
+    if (subs.length === 0) return transactions;
+
+    const names = subs
+      .map(s => normalizeForMatch(s.name))
+      .filter(n => n.length >= 2);
+
+    return transactions.map(tx => {
+      if (tx.type !== "支出" || tx.category === "訂閱") return tx;
+      const noteNorm = normalizeForMatch(tx.note ?? "");
+      if (names.some(n => noteNorm.includes(n) || n.includes(noteNorm))) {
+        return { ...tx, category: "訂閱" };
+      }
+      return tx;
+    });
+  } catch {
+    return transactions;
+  }
 }
 
 function sleep(ms: number): Promise<void> {
@@ -173,6 +200,9 @@ async function parseAndSave(
 
   // AI batch categorization based on note/description
   transactions = await batchCategorize(transactions);
+
+  // Post-processing: auto-apply "訂閱" category if note matches a Notion subscription
+  transactions = await applySubscriptionCategories(transactions);
 
   await saveTransactions(transactions, userId, result);
   return result;

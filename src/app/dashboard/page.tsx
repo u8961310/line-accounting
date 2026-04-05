@@ -18,7 +18,7 @@ import BudgetManager from "@/components/BudgetManager";
 import FixedExpenseManager from "@/components/FixedExpenseManager";
 import DebtOptimizer from "@/components/DebtOptimizer";
 import AnnualReport from "@/components/AnnualReport";
-import { RetirementCalc, FireCalc, IncomeStability, ExpenseRatio, AccountFlow, SpendingForecast, CashflowForecast, MilestoneTimeline } from "@/components/AdvancedAnalysis";
+import { RetirementCalc, FireCalc, IncomeStability, ExpenseRatio, AccountFlow, SpendingForecast, CashflowForecast, MilestoneTimeline, PersonalityReport } from "@/components/AdvancedAnalysis";
 import NotificationPanel from "@/components/NotificationPanel";
 import SubscriptionDetector from "@/components/SubscriptionDetector";
 import BillCalendar from "@/components/BillCalendar";
@@ -29,6 +29,7 @@ import CategoryManager from "@/components/CategoryManager";
 import UserGuide from "@/components/UserGuide";
 import DuplicateReview from "@/components/DuplicateReview";
 import CleanOtherCategory from "@/components/CleanOtherCategory";
+import NoteCleanup from "@/components/NoteCleanup";
 import { THEMES, themeToCSS, type AppTheme } from "@/lib/themes";
 import { getDailyQuote, getRandomQuote, type FinancialQuote } from "@/lib/quotes";
 import type { DuplicatePair } from "@/app/api/duplicate-candidates/route";
@@ -50,8 +51,8 @@ interface NetWorth {
   totalDebt: number; netWorth: number; monthlyInterest: number; totalInterestPaid: number;
 }
 type TabId = "charts" | "transactions" | "loans" | "budget" | "subscriptions" | "annual"
-  | "retirement" | "fire" | "income-stability" | "expense-ratio" | "account-flow" | "spending-forecast" | "cashflow-forecast" | "bill-calendar" | "grad-school" | "savings-plan" | "education-program" | "milestone"
-  | "import" | "guide" | "audit" | "categories" | "duplicate-review" | "clean-other";
+  | "retirement" | "fire" | "income-stability" | "expense-ratio" | "account-flow" | "spending-forecast" | "cashflow-forecast" | "bill-calendar" | "grad-school" | "savings-plan" | "education-program" | "milestone" | "personality"
+  | "import" | "guide" | "audit" | "categories" | "duplicate-review" | "clean-other" | "note-cleanup";
 interface MonthDetail {
   byCategory: CategorySummary[];
   totals: { income: number; expense: number; net: number };
@@ -105,6 +106,7 @@ const TOOLS_TABS: { id: TabId; label: string }[] = [
   { id: "import",           label: "匯入資料" },
   { id: "duplicate-review", label: "重複審核" },
   { id: "clean-other",      label: "分類清理" },
+  { id: "note-cleanup",     label: "備注整理" },
   { id: "audit",            label: "稽核記錄" },
   { id: "guide",            label: "使用說明" },
 ];
@@ -117,6 +119,7 @@ const ANALYSIS_TABS: { id: TabId; label: string; icon: string }[] = [
   { id: "account-flow",      label: "帳戶流量",    icon: "🏦" },
   { id: "spending-forecast", label: "消費預測",    icon: "⚠️" },
   { id: "cashflow-forecast", label: "現金流預測",  icon: "💰" },
+  { id: "personality",       label: "消費性格",    icon: "🧠" },
 ];
 
 // 財務規劃子選單（目標 / 計畫向）
@@ -564,7 +567,13 @@ export default function DashboardPage() {
     typeof window !== "undefined" ? getCardOrder() : CHART_CARDS_DEFAULT.map(c => c.id as ChartCardId)
   );
   const [showCardSettings, setShowCardSettings] = useState(false);
-  const showCard  = (id: string) => !hiddenCards.has(id);
+  const [lazyReady, setLazyReady] = useState(false);
+  const showCard  = (id: string) => {
+    if (hiddenCards.has(id)) return false;
+    // Lazy load: first 4 cards in user's order render immediately; rest after 150ms
+    const idx = cardOrder.indexOf(id as ChartCardId);
+    return idx < 4 || lazyReady;
+  };
   const toggleCard = (id: ChartCardId) => {
     setHiddenCards(prev => {
       const next = new Set(prev);
@@ -775,6 +784,15 @@ export default function DashboardPage() {
   // Tab 記憶 — 持久化 activeTab
   useEffect(() => {
     localStorage.setItem("activeTab", activeTab);
+  }, [activeTab]);
+
+  // 圖表 Tab 卡片懶載入：切到 charts tab 時先渲染前 4 張，150ms 後渲染其餘
+  useEffect(() => {
+    if (activeTab === "charts") {
+      setLazyReady(false);
+      const timer = setTimeout(() => setLazyReady(true), 150);
+      return () => clearTimeout(timer);
+    }
   }, [activeTab]);
 
   // ── 鍵盤快捷鍵 ──────────────────────────────────────────────────────────────
@@ -3348,11 +3366,16 @@ export default function DashboardPage() {
                                     </span>
                                   )}
                                   {/* Hover 明細 popup */}
-                                  {isHovered && dayTxs.length > 0 && (
+                                  {isHovered && dayTxs.length > 0 && (() => {
+                                    const col = i % 7;
+                                    const alignRight = col >= 5;
+                                    return (
                                     <div className="absolute z-50 rounded-xl p-3 shadow-2xl"
                                       style={{
                                         top: "calc(100% + 4px)",
-                                        left: "50%", transform: "translateX(-50%)",
+                                        ...(alignRight
+                                          ? { right: 0, left: "auto", transform: "none" }
+                                          : { left: "50%", transform: "translateX(-50%)" }),
                                         minWidth: 180, maxWidth: 240,
                                         background: "var(--bg-card)",
                                         border: "1px solid var(--border)",
@@ -3383,7 +3406,8 @@ export default function DashboardPage() {
                                         </div>
                                       )}
                                     </div>
-                                  )}
+                                    );
+                                  })()}
                                 </div>
                               );
                             })}
@@ -4637,6 +4661,7 @@ export default function DashboardPage() {
         {activeTab === "education-program" && <EducationProgramPlanner isDemo={isDemo.current} />}
         {activeTab === "grad-school"       && <GradSchoolPlanner       isDemo={isDemo.current} />}
         {activeTab === "milestone"         && <MilestoneTimeline       isDemo={isDemo.current} />}
+        {activeTab === "personality"       && <PersonalityReport       isDemo={isDemo.current} />}
 
         {/* ── Payees ── */}
 
@@ -4834,6 +4859,9 @@ export default function DashboardPage() {
 
         {/* ── Clean Other Category ── */}
         {activeTab === "clean-other" && <CleanOtherCategory />}
+
+        {/* ── Note Cleanup ── */}
+        {activeTab === "note-cleanup" && <NoteCleanup />}
 
       </main>
 

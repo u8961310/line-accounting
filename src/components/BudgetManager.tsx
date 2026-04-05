@@ -3,10 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 
 interface BudgetItem {
-  id:       string;
-  category: string;
-  amount:   number;
-  spent:    number;
+  id:              string;
+  category:        string;
+  amount:          number;
+  carryoverPct:    number;
+  carryover:       number;
+  effectiveAmount: number;
+  spent:           number;
 }
 
 interface FixedExpenseItem { id: string; name: string; amount: number }
@@ -105,27 +108,28 @@ function BudgetCard({
 }: {
   category: string;
   budget: BudgetItem;
-  onSave:   (category: string, amount: number) => Promise<void>;
+  onSave:   (category: string, amount: number, carryoverPct?: number) => Promise<void>;
   onDelete: (category: string) => Promise<void>;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [inputVal, setInputVal] = useState(String(budget.amount));
-  const [saving, setSaving]   = useState(false);
+  const [editing,      setEditing]      = useState(false);
+  const [inputVal,     setInputVal]     = useState(String(budget.amount));
+  const [carryoverPct, setCarryoverPct] = useState(budget.carryoverPct);
+  const [saving,       setSaving]       = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  useEffect(() => { setInputVal(String(budget.amount)); }, [budget.amount]);
+  useEffect(() => { setInputVal(String(budget.amount)); setCarryoverPct(budget.carryoverPct); }, [budget.amount, budget.carryoverPct]);
 
-  const { spent, amount } = budget;
-  const pct    = Math.min((spent / amount) * 100, 100);
-  const status = statusOf(spent, amount);
+  const { spent, effectiveAmount, carryover } = budget;
+  const pct    = Math.min((spent / effectiveAmount) * 100, 100);
+  const status = statusOf(spent, effectiveAmount);
   const meta   = STATUS_META[status];
-  const over   = spent - amount;
+  const over   = spent - effectiveAmount;
 
   async function handleSave() {
     const val = parseFloat(inputVal);
     if (isNaN(val) || val < 0) return;
     setSaving(true);
-    await onSave(category, val);
+    await onSave(category, val, carryoverPct);
     setSaving(false);
     setEditing(false);
   }
@@ -146,7 +150,12 @@ function BudgetCard({
           </div>
           <p className="text-[14px] tabular-nums mt-0.5">
             <span style={{ color: meta.color }} className="font-bold">NT$ {fmt(spent)}</span>
-            <span style={{ color: "var(--text-muted)" }}> / NT$ {fmt(amount)}</span>
+            <span style={{ color: "var(--text-muted)" }}> / NT$ {fmt(effectiveAmount)}</span>
+            {carryover > 0 && (
+              <span className="text-[11px] ml-1" style={{ color: "#10B981" }}>
+                (含結轉 +{fmt(carryover)})
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -178,7 +187,7 @@ function BudgetCard({
           {status === "over" ? (
             <span style={{ color: "#EF4444" }}>超出 NT$ {fmt(over)}</span>
           ) : (
-            <span>剩餘 <span className="font-semibold tabular-nums" style={{ color: "var(--text-sub)" }}>NT$ {fmt(amount - spent)}</span></span>
+            <span>剩餘 <span className="font-semibold tabular-nums" style={{ color: "var(--text-sub)" }}>NT$ {fmt(effectiveAmount - spent)}</span></span>
           )}
           <span>{pct.toFixed(1)}%</span>
         </div>
@@ -186,13 +195,35 @@ function BudgetCard({
 
       {/* Inline edit */}
       {editing && (
-        <EditInput
-          value={inputVal}
-          onChange={setInputVal}
-          onSave={handleSave}
-          onCancel={() => setEditing(false)}
-          saving={saving}
-        />
+        <div className="mt-3 space-y-2.5">
+          <EditInput
+            value={inputVal}
+            onChange={setInputVal}
+            onSave={handleSave}
+            onCancel={() => setEditing(false)}
+            saving={saving}
+          />
+          {/* Carryover toggle */}
+          <div className="flex items-center justify-between px-1">
+            <div>
+              <p className="text-[13px] font-semibold" style={{ color: "var(--text-sub)" }}>結轉上月剩餘</p>
+              <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>將上月未用完額度按比例加入本月</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={carryoverPct}
+                onChange={e => setCarryoverPct(Number(e.target.value))}
+                className="px-2 py-1 rounded-lg text-[13px] outline-none"
+                style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)", color: "var(--text-sub)" }}>
+                <option value={0}>不結轉</option>
+                <option value={25}>25%</option>
+                <option value={50}>50%</option>
+                <option value={75}>75%</option>
+                <option value={100}>100%</option>
+              </select>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -513,11 +544,11 @@ export default function BudgetManager({ extraCategories = [] }: { extraCategorie
     fetchBudgets(month);
   }
 
-  async function handleSave(category: string, amount: number) {
+  async function handleSave(category: string, amount: number, carryoverPct?: number) {
     await fetch("/api/budgets", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category, amount }),
+      body: JSON.stringify({ category, amount, carryoverPct: carryoverPct ?? 0 }),
     });
     fetchBudgets(month);
   }

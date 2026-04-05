@@ -5,7 +5,7 @@ import { DEMO_LOANS_RAW, DEMO_CREDIT_CARDS_RAW, DEMO_FIXED_EXPENSES } from "@/li
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type EventType = "bill-due" | "statement" | "loan" | "fixed";
+type EventType = "bill-due" | "statement" | "loan" | "fixed" | "subscription";
 
 interface CalEvent {
   day: number;
@@ -18,10 +18,11 @@ interface CalEvent {
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const TYPE_CONFIG: Record<EventType, { color: string; bg: string; icon: string; title: string }> = {
-  "bill-due":  { color: "#EF4444", bg: "rgba(239,68,68,0.12)",    icon: "💳", title: "信用卡繳款日" },
-  "statement": { color: "#F59E0B", bg: "rgba(245,158,11,0.12)",   icon: "📋", title: "信用卡結帳日" },
-  "loan":      { color: "#3B82F6", bg: "rgba(59,130,246,0.12)",   icon: "🏦", title: "貸款還款日"   },
-  "fixed":     { color: "#8B5CF6", bg: "rgba(139,92,246,0.12)",   icon: "📌", title: "固定支出"     },
+  "bill-due":     { color: "#EF4444", bg: "rgba(239,68,68,0.12)",    icon: "💳", title: "信用卡繳款日" },
+  "statement":    { color: "#F59E0B", bg: "rgba(245,158,11,0.12)",   icon: "📋", title: "信用卡結帳日" },
+  "loan":         { color: "#3B82F6", bg: "rgba(59,130,246,0.12)",   icon: "🏦", title: "貸款還款日"   },
+  "fixed":        { color: "#8B5CF6", bg: "rgba(139,92,246,0.12)",   icon: "📌", title: "固定支出"     },
+  "subscription": { color: "#06B6D4", bg: "rgba(6,182,212,0.12)",    icon: "🔁", title: "訂閱扣款日"   },
 };
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
@@ -75,6 +76,7 @@ export default function BillCalendar({ isDemo }: { isDemo: boolean }) {
     loans:         { name: string; paymentDay: number | null; status: string; remainingPrincipal: string | number }[],
     cards:         { name: string; bank: string; statementDay?: number | null; dueDay?: number | null; bills?: { status: string; totalAmount: string | number; dueDate: string; billingMonth?: string }[] }[],
     fixedExpenses: { name: string; amount: number; dayOfMonth?: number | null }[],
+    subscriptions: { name: string; cycle: string; fee: number; monthlyAmount: number; nextBillingDate: string | null; startDate: string | null }[],
     year: number,
     month: number, // 0-indexed
   ): CalEvent[] => {
@@ -98,7 +100,6 @@ export default function BillCalendar({ isDemo }: { isDemo: boolean }) {
         result.push({ day: card.statementDay, type: "statement", label: `${card.name} 結帳日` });
       }
       if (card.dueDay) {
-        // check if this month has an unpaid bill
         const ym = `${year}-${String(month + 1).padStart(2, "0")}`;
         const unpaidBill = card.bills?.find(b =>
           b.billingMonth === ym && b.status !== "paid"
@@ -122,6 +123,37 @@ export default function BillCalendar({ isDemo }: { isDemo: boolean }) {
       result.push({ day: fe.dayOfMonth, type: "fixed", label: fe.name, amount: fe.amount });
     }
 
+    // Subscriptions — 月繳每月都顯示，年繳只在扣款當月顯示
+    const MONTHLY = new Set(["每月", "月繳", "月付", "月"]);
+    const YEARLY  = new Set(["每年", "年繳", "年付", "年"]);
+    for (const sub of subscriptions) {
+      if (!sub.startDate) continue;
+      const start = new Date(sub.startDate);
+
+      if (MONTHLY.has(sub.cycle)) {
+        // 每月在 startDate 的同一天扣款
+        const billingDay = start.getDate();
+        if (billingDay >= 1 && billingDay <= new Date(year, month + 1, 0).getDate()) {
+          result.push({
+            day:    billingDay,
+            type:   "subscription",
+            label:  sub.name,
+            amount: sub.monthlyAmount,
+          });
+        }
+      } else if (YEARLY.has(sub.cycle)) {
+        // 只在週年月份顯示
+        if (start.getMonth() === month) {
+          result.push({
+            day:    start.getDate(),
+            type:   "subscription",
+            label:  `${sub.name}（年繳）`,
+            amount: sub.fee,
+          });
+        }
+      }
+    }
+
     return result;
   }, []);
 
@@ -130,7 +162,7 @@ export default function BillCalendar({ isDemo }: { isDemo: boolean }) {
     const m = viewDate.getMonth();
 
     if (isDemo) {
-      setEvents(build(DEMO_LOANS_RAW, DEMO_CREDIT_CARDS_RAW, DEMO_FIXED_EXPENSES.fixedExpenses, y, m));
+      setEvents(build(DEMO_LOANS_RAW, DEMO_CREDIT_CARDS_RAW, DEMO_FIXED_EXPENSES.fixedExpenses, [], y, m));
       setLoading(false);
       return;
     }
@@ -140,11 +172,13 @@ export default function BillCalendar({ isDemo }: { isDemo: boolean }) {
       fetch("/api/loans").then(r => r.json()),
       fetch("/api/credit-cards").then(r => r.json()),
       fetch("/api/fixed-expenses").then(r => r.json()),
-    ]).then(([loansData, cardsData, feData]) => {
+      fetch("/api/subscriptions").then(r => r.json()),
+    ]).then(([loansData, cardsData, feData, subData]) => {
       setEvents(build(
         (loansData.loans ?? loansData) as Parameters<typeof build>[0],
         Array.isArray(cardsData) ? cardsData : [],
         ((feData as { fixedExpenses: { name: string; amount: number; dayOfMonth?: number | null }[] }).fixedExpenses ?? []),
+        ((subData as { items: { name: string; cycle: string; fee: number; monthlyAmount: number; nextBillingDate: string | null; startDate: string | null }[] }).items ?? []),
         y, m,
       ));
     }).finally(() => setLoading(false));
