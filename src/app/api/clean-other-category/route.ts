@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import Anthropic from "@anthropic-ai/sdk";
+import { logAudit } from "@/lib/audit";
 
 const DASHBOARD_USER = "dashboard_user";
 const BATCH_SIZE = 50; // max per Claude call
@@ -126,6 +127,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       prisma.transaction.update({ where: { id: u.id }, data: { category: u.category } })
     )
   );
+
+  // 寫入稽核記錄
+  const categorySummary = validUpdates.reduce<Record<string, number>>((acc, u) => {
+    acc[u.category] = (acc[u.category] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  void logAudit({
+    action:  "ai_recategorize",
+    tool:    "clean-other-category",
+    params:  { count: validUpdates.length },
+    summary: { applied: validUpdates.length, byCategory: categorySummary },
+  });
 
   return NextResponse.json({ applied: validUpdates.length });
 }

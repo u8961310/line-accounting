@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 
-export type AuditAction = "mcp_call" | "csv_import" | "pdf_import" | "notion_sync";
+export type AuditAction = "mcp_call" | "csv_import" | "pdf_import" | "notion_sync" | "ai_recategorize";
 
 interface LogAuditOptions {
   action: AuditAction;

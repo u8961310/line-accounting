@@ -4746,7 +4746,7 @@ export default function DashboardPage() {
             {/* 篩選列 */}
             <div className="flex items-center gap-3 flex-wrap">
               <span className="text-[14px] font-medium" style={{ color: "var(--text-sub)" }}>篩選類型：</span>
-              {(["", "mcp_call", "csv_import", "pdf_import", "notion_sync"] as const).map(f => (
+              {(["", "mcp_call", "csv_import", "pdf_import", "notion_sync", "ai_recategorize"] as const).map(f => (
                 <button key={f || "all"}
                   onClick={() => { setAuditFilter(f); setAuditPage(1); }}
                   className="text-[14px] px-3 py-1 rounded-md font-medium transition-colors"
@@ -4755,7 +4755,7 @@ export default function DashboardPage() {
                     color:      auditFilter === f ? "#fff"           : "var(--text-sub)",
                     border:     "1px solid var(--border-inner)",
                   }}>
-                  {f === "" ? "全部" : f === "mcp_call" ? "MCP 呼叫" : f === "csv_import" ? "CSV 匯入" : f === "pdf_import" ? "PDF 匯入" : "Notion 同步"}
+                  {f === "" ? "全部" : f === "mcp_call" ? "MCP 呼叫" : f === "csv_import" ? "CSV 匯入" : f === "pdf_import" ? "PDF 匯入" : f === "notion_sync" ? "Notion 同步" : "AI 分類清理"}
                 </button>
               ))}
               <span className="ml-auto text-[14px]" style={{ color: "var(--text-muted)" }}>共 {auditTotal} 筆</span>
@@ -4780,8 +4780,8 @@ export default function DashboardPage() {
                     const dt = new Date(log.createdAt);
                     const dateStr = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
                     const timeStr = `${String(dt.getHours()).padStart(2,"0")}:${String(dt.getMinutes()).padStart(2,"0")}:${String(dt.getSeconds()).padStart(2,"0")}`;
-                    const ACTION_LABEL: Record<string, string> = { mcp_call: "MCP 呼叫", csv_import: "CSV 匯入", pdf_import: "PDF 匯入", notion_sync: "Notion 同步" };
-                    const ACTION_COLOR: Record<string, string> = { mcp_call: "#8B5CF6", csv_import: "#3B82F6", pdf_import: "#F59E0B", notion_sync: "#10B981" };
+                    const ACTION_LABEL: Record<string, string> = { mcp_call: "MCP 呼叫", csv_import: "CSV 匯入", pdf_import: "PDF 匯入", notion_sync: "Notion 同步", ai_recategorize: "AI 分類清理" };
+                    const ACTION_COLOR: Record<string, string> = { mcp_call: "#8B5CF6", csv_import: "#3B82F6", pdf_import: "#F59E0B", notion_sync: "#10B981", ai_recategorize: "#8B5CF6" };
                     const actionLabel = ACTION_LABEL[log.action] ?? log.action;
                     const actionColor = ACTION_COLOR[log.action] ?? "#64748B";
                     const summaryText = log.summary
