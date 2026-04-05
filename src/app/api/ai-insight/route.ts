@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@notionhq/client";
+import { logAudit } from "@/lib/audit";
 
 // ── 圖表 URL 產生器（QuickChart.io，免費無須金鑰） ────────────────────────────
 const CHART_COLORS = [
@@ -239,9 +240,18 @@ export async function POST(req: NextRequest) {
       children: buildNotionBlocks(body.insight, d, body.charts),
     } as Parameters<typeof notion.pages.create>[0]);
 
-    return NextResponse.json({ success: true, url: (page as { url?: string }).url });
+    const pageUrl = (page as { url?: string }).url;
+    void logAudit({
+      action:  "notion_sync",
+      tool:    "ai-insight",
+      params:  { month: body.month },
+      summary: { pageUrl: pageUrl ?? "", income: Math.round(d.totalIncome), expense: Math.round(d.totalExpense) },
+    });
+
+    return NextResponse.json({ success: true, url: pageUrl });
   } catch (e) {
     console.error("Notion sync error:", e);
+    void logAudit({ action: "notion_sync", tool: "ai-insight", status: "error", errorMsg: e instanceof Error ? e.message : "Notion 同步失敗" });
     return NextResponse.json({ error: "Notion 同步失敗" }, { status: 500 });
   }
 }
