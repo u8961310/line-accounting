@@ -4,8 +4,6 @@ import { parseSinopacCcPdf } from "@/lib/pdf/sinopac_cc";
 import { parseKgiBankPdf, isKgiBankPdf } from "@/lib/pdf/kgi_bank";
 import { batchCategorize } from "@/lib/csv/categorizer";
 import { logAudit } from "@/lib/audit";
-import pdfParse from "pdf-parse";
-
 export const dynamic = "force-dynamic";
 
 async function getDashboardUser() {
@@ -223,9 +221,10 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // 先讀文字，偵測格式
-    const pdfData = await pdfParse(buffer);
-    const text = pdfData.text;
+    // 先讀文字，偵測格式（動態 import 避免 build 時 pdf-parse 讀測試檔案）
+    const pdfParse = (await import("pdf-parse")).default;
+    const pdfData  = await pdfParse(buffer);
+    const text     = pdfData.text;
 
     if (isKgiBankPdf(text)) {
       return handleKgiBank(buffer);
