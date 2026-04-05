@@ -585,6 +585,7 @@ export default function DashboardPage() {
   const [aiInsightLoading, setAiInsightLoading] = useState(false);
   const [aiInsightErr,     setAiInsightErr]     = useState<string | null>(null);
   const [aiInsightOpen,    setAiInsightOpen]    = useState(true);
+  const [aiInsightMonth,   setAiInsightMonth]   = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; });
   const [notionSyncingInsight, setNotionSyncingInsight] = useState(false);
   const [notionInsightUrl,     setNotionInsightUrl]     = useState<string | null>(null);
   const [anomalies,      setAnomalies]      = useState<{ category: string; current: number; mean: number; stddev: number; zscore: number; prevMonths: number[] }[]>([]);
@@ -673,12 +674,13 @@ export default function DashboardPage() {
     finally { setLoading(false); }
   }, [months, currentMonth]);
 
-  const fetchAiInsight = useCallback(async () => {
+  const fetchAiInsight = useCallback(async (targetMonth?: string) => {
     if (isDemo.current) return;
+    const month = targetMonth ?? aiInsightMonth;
     setAiInsightLoading(true);
     setAiInsightErr(null);
     try {
-      const res = await fetch(`/api/ai-insight?month=${currentMonth}`);
+      const res = await fetch(`/api/ai-insight?month=${month}`);
       if (!res.ok) { setAiInsightErr("AI 分析暫時不可用"); return; }
       const d = await res.json() as { insight?: string; charts?: { donut?: string | null; bar?: string | null }; meta?: { totalIncome: number; totalExpense: number; savingRate: string; overBudgetCount: number }; error?: string };
       if (d.error) { setAiInsightErr(d.error); return; }
@@ -686,7 +688,8 @@ export default function DashboardPage() {
       setNotionInsightUrl(null);
     } catch { setAiInsightErr("網路錯誤"); }
     finally { setAiInsightLoading(false); }
-  }, [currentMonth]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiInsightMonth]);
 
   const fetchAnomalies = useCallback(async () => {
     if (isDemo.current) return;
@@ -1909,7 +1912,7 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>AI 月度洞察</p>
                     <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
-                      {currentMonth} · 毒舌財務健檢
+                      毒舌財務健檢
                       {aiInsight && !aiInsightOpen && (
                         <span className="ml-2 px-2 py-0.5 rounded-full text-[11px]"
                           style={{ background: "rgba(99,102,241,0.15)", color: "#818CF8" }}>
@@ -1920,9 +1923,23 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                  {/* 月份選擇器 */}
+                  <input
+                    type="month"
+                    value={aiInsightMonth}
+                    max={currentMonth}
+                    onChange={e => {
+                      setAiInsightMonth(e.target.value);
+                      setAiInsight(null);
+                      setNotionInsightUrl(null);
+                      setAiInsightOpen(true);
+                    }}
+                    className="rounded-xl px-2 py-1 text-[13px] outline-none"
+                    style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)", color: "var(--text-sub)", colorScheme: "dark" }}
+                  />
                   {!aiInsight && !aiInsightLoading && (
                     <button
-                      onClick={fetchAiInsight}
+                      onClick={() => fetchAiInsight()}
                       className="px-3 py-1.5 rounded-xl text-[13px] font-semibold text-white transition-opacity hover:opacity-80"
                       style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)" }}>
                       產生報告
@@ -2008,7 +2025,7 @@ export default function DashboardPage() {
                           const res = await fetch("/api/ai-insight", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ month: currentMonth, insight: aiInsight.insight, charts: aiInsight.charts }),
+                            body: JSON.stringify({ month: aiInsightMonth, insight: aiInsight.insight, charts: aiInsight.charts }),
                           });
                           const data = await res.json() as { success?: boolean; url?: string; error?: string };
                           if (data.url) setNotionInsightUrl(data.url);
