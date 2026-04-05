@@ -334,6 +334,7 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] Tab 記憶：重新整理後回到上次所在的 Tab（localStorage 存 activeTab）
 - [x] 通知鈴鐺紅點：在鈴鐺上直接顯示未讀通知數量 badge
 - [x] Header 單行化：Logo 與 Tab nav 合併同一行，減少垂直空間佔用
+- [ ] 通知中心優先排序：`NotificationPanel` 確保 danger → warn → info 順序（`/api/notifications` 已排序，確認前端未打亂）
 
 #### 圖表 tab
 - [x] 月份對比卡可展開：點擊展開看全分類對比 Bar Chart
@@ -349,6 +350,8 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] 無限滾動：滾到底部自動載入下一頁，取代分頁按鈕
 - [x] 空狀態改善：搜尋無結果時顯示「清除篩選」按鈕（有篩選條件時顯示 🔍 找不到符合條件＋清除篩選按鈕；真的無資料才顯示原始引導畫面）
 - [x] 行內金額編輯：點擊金額直接 inline 編輯，不用開 modal（點擊金額變 input，Enter/blur 儲存，Escape 取消，同步更新 PATCH API 支援 amount 欄位）
+- [ ] 金額範圍篩選：進階篩選加入「金額 ≥ / ≤」欄位，`/api/transactions` 已有 `amountMin`/`amountMax` 參數，只需補前端 UI
+- [ ] 批量刪除交易：交易列表支援多選（checkbox），多選後出現「🗑 刪除選中」，確認後呼叫批次 DELETE API
 
 #### 效能
 - [x] Tab 資料快取：切回之前看過的 Tab 時不重新 fetch（useRef 快取）
