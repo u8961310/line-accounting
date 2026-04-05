@@ -83,49 +83,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
-      name: "get_payees",
-      description: "查詢所有轉帳帳號對照表（pattern → label）",
-      inputSchema: { type: "object", properties: {} },
-    },
-    {
-      name: "add_payee",
-      description: "新增轉帳帳號對照，讓特定帳號自動標記為可讀名稱",
-      inputSchema: {
-        type: "object",
-        required: ["pattern", "label"],
-        properties: {
-          pattern:  { type: "string", description: "比對 note 的子字串，如 \"807-001360\"" },
-          label:    { type: "string", description: "顯示名稱，如 \"房租\"" },
-          category: { type: "string", description: "選填：覆蓋分類" },
-        },
-      },
-    },
-    {
-      name: "update_payee",
-      description: "更新轉帳帳號對照",
-      inputSchema: {
-        type: "object",
-        required: ["id"],
-        properties: {
-          id:       { type: "string" },
-          pattern:  { type: "string" },
-          label:    { type: "string" },
-          category: { type: "string" },
-        },
-      },
-    },
-    {
-      name: "delete_payee",
-      description: "刪除轉帳帳號對照",
-      inputSchema: {
-        type: "object",
-        required: ["id"],
-        properties: {
-          id: { type: "string" },
-        },
-      },
-    },
-    {
       name: "get_weekly_report",
       description: "產生本週財務週報：本週收支、本月預算進度、本週到期貸款、支出分類排行、待處理事項",
       inputSchema: { type: "object", properties: {} },
@@ -335,23 +292,19 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         where.date = { gte: new Date(y, m - 1, 1), lt: new Date(y, m, 1) };
       }
 
-      const [txs, payees] = await Promise.all([
-        prisma.transaction.findMany({ where, orderBy: { date: "desc" }, take: limit }),
-        prisma.payeeMapping.findMany(),
-      ]);
+      const txs = await prisma.transaction.findMany({ where, orderBy: { date: "desc" }, take: limit });
 
       return {
         content: [{
           type: "text",
           text: JSON.stringify(txs.map(t => {
-            const match = payees.find(p => t.note.includes(p.pattern));
             return {
               id:           t.id,
               date:         t.date.toISOString().split("T")[0],
               type:         t.type,
               amount:       Number(t.amount),
-              category:     match?.category || t.category,
-              note:         match ? `${match.label}（${t.note}）` : t.note,
+              category:     t.category,
+              note:         t.note,
               source:       t.source,
               incomeSource: t.incomeSource ?? undefined,
             };
@@ -649,50 +602,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           text: JSON.stringify({ ok: true, id: tx.id, note: tx.note, amount: Number(tx.amount), incomeSource: tx.incomeSource }),
         }],
       };
-    }
-
-    // ── get_payees ───────────────────────────────────────────────────────────
-    if (name === "get_payees") {
-      const payees = await prisma.payeeMapping.findMany({ orderBy: { createdAt: "asc" } });
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify(payees.map(p => ({
-            id:       p.id,
-            pattern:  p.pattern,
-            label:    p.label,
-            category: p.category,
-          })), null, 2),
-        }],
-      };
-    }
-
-    // ── add_payee ────────────────────────────────────────────────────────────
-    if (name === "add_payee") {
-      const payee = await prisma.payeeMapping.create({
-        data: {
-          pattern:  a.pattern as string,
-          label:    a.label   as string,
-          category: (a.category as string) ?? "",
-        },
-      });
-      return { content: [{ type: "text", text: JSON.stringify({ ok: true, id: payee.id }) }] };
-    }
-
-    // ── update_payee ─────────────────────────────────────────────────────────
-    if (name === "update_payee") {
-      const data: Record<string, string> = {};
-      if (a.pattern)  data.pattern  = a.pattern  as string;
-      if (a.label)    data.label    = a.label    as string;
-      if (a.category !== undefined) data.category = a.category as string;
-      await prisma.payeeMapping.update({ where: { id: a.id as string }, data });
-      return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] };
-    }
-
-    // ── delete_payee ─────────────────────────────────────────────────────────
-    if (name === "delete_payee") {
-      await prisma.payeeMapping.delete({ where: { id: a.id as string } });
-      return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] };
     }
 
     // ── get_spending_trend ───────────────────────────────────────────────────

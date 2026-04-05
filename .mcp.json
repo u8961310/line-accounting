@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "line-accounting": {
+      "command": "cmd",
+      "args": ["/c", "npx", "tsx", "src/mcp/server.ts"]
+    }
+  }
+}

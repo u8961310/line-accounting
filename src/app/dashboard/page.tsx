@@ -4,7 +4,7 @@ import React, { useEffect, useLayoutEffect, useState, useCallback, useRef } from
 import {
   DEMO_SUMMARY, DEMO_BALANCES, DEMO_NET_WORTH, DEMO_BUDGETS,
   DEMO_TX_PAGE, DEMO_CATEGORIES, DEMO_FIXED_EXPENSES, DEMO_LOANS,
-  DEMO_AUDIT_LOGS, DEMO_TRANSFER_CANDIDATES, DEMO_GOALS, DEMO_DUPLICATE_CANDIDATES, DEMO_HEALTH_SNAPSHOTS,
+  DEMO_AUDIT_LOGS, DEMO_GOALS, DEMO_DUPLICATE_CANDIDATES, DEMO_HEALTH_SNAPSHOTS,
 } from "@/lib/demo-data";
 import {
   AreaChart, Area, LineChart, Line,
@@ -15,7 +15,6 @@ import {
 import CsvImport from "@/components/CsvImport";
 import LoanManager from "@/components/LoanManager";
 import BudgetManager from "@/components/BudgetManager";
-import PayeeManager from "@/components/PayeeManager";
 import FixedExpenseManager from "@/components/FixedExpenseManager";
 import DebtOptimizer from "@/components/DebtOptimizer";
 import AnnualReport from "@/components/AnnualReport";
@@ -32,7 +31,6 @@ import DuplicateReview from "@/components/DuplicateReview";
 import CleanOtherCategory from "@/components/CleanOtherCategory";
 import { THEMES, themeToCSS, type AppTheme } from "@/lib/themes";
 import { getDailyQuote, getRandomQuote, type FinancialQuote } from "@/lib/quotes";
-import type { TransferPair } from "@/app/api/transfer-candidates/route";
 import type { DuplicatePair } from "@/app/api/duplicate-candidates/route";
 import type { HealthSnapshot } from "@/app/api/health-score/snapshots/route";
 
@@ -53,7 +51,7 @@ interface NetWorth {
 }
 type TabId = "charts" | "transactions" | "loans" | "budget" | "subscriptions" | "annual"
   | "retirement" | "fire" | "income-stability" | "expense-ratio" | "account-flow" | "spending-forecast" | "cashflow-forecast" | "bill-calendar" | "grad-school" | "savings-plan" | "education-program"
-  | "payees" | "import" | "guide" | "audit" | "categories" | "duplicate-review" | "clean-other";
+  | "import" | "guide" | "audit" | "categories" | "duplicate-review" | "clean-other";
 interface MonthDetail {
   byCategory: CategorySummary[];
   totals: { income: number; expense: number; net: number };
@@ -103,7 +101,6 @@ const TABS: { id: TabId; label: string }[] = [
 ];
 
 const TOOLS_TABS: { id: TabId; label: string }[] = [
-  { id: "payees",           label: "帳號對照" },
   { id: "categories",       label: "自訂分類" },
   { id: "import",           label: "匯入資料" },
   { id: "duplicate-review", label: "重複審核" },
@@ -578,8 +575,7 @@ export default function DashboardPage() {
     localStorage.setItem(CHART_ORDER_KEY, JSON.stringify(next));
   };
   const [urgentBillCount, setUrgentBillCount] = useState(0);
-  const [transferPairs, setTransferPairs] = useState<TransferPair[]>([]);
-  const [dismissedPairs, setDismissedPairs] = useState<Set<string>>(new Set());
+
   const [duplicatePairs,         setDuplicatePairs]         = useState<DuplicatePair[]>([]);
   const [dismissedDupPairs,      setDismissedDupPairs]      = useState<Set<string>>(new Set());
   const [dupDeleting,            setDupDeleting]            = useState<Set<string>>(new Set());
@@ -770,7 +766,7 @@ export default function DashboardPage() {
 
   // Tab 記憶 — paint 前同步讀取，避免閃爍；useLayoutEffect 不在 server 執行，hydration 不會失配
   useLayoutEffect(() => {
-    const VALID_TABS = new Set<string>(["charts","transactions","loans","budget","subscriptions","annual","retirement","fire","income-stability","expense-ratio","account-flow","spending-forecast","cashflow-forecast","bill-calendar","grad-school","savings-plan","education-program","payees","import","guide","audit","categories","duplicate-review","clean-other"]);
+    const VALID_TABS = new Set<string>(["charts","transactions","loans","budget","subscriptions","annual","retirement","fire","income-stability","expense-ratio","account-flow","spending-forecast","cashflow-forecast","bill-calendar","grad-school","savings-plan","education-program","import","guide","audit","categories","duplicate-review","clean-other"]);
     const saved = localStorage.getItem("activeTab") as TabId | null;
     if (saved && VALID_TABS.has(saved)) setActiveTab(saved);
   }, []);
@@ -880,11 +876,6 @@ export default function DashboardPage() {
     if (firstVisit) loadedTabs.current.add("transactions");
     fetchTxPage(txPage, txPage > 1);
     if (firstVisit) {
-      if (isDemo.current) { setTransferPairs(DEMO_TRANSFER_CANDIDATES.pairs); return; }
-      fetch(`/api/transfer-candidates?lineUserId=${lineUserId}`)
-        .then(r => r.json())
-        .then((d: { pairs: TransferPair[] }) => setTransferPairs(d.pairs))
-        .catch(() => {});
     }
   }, [activeTab, txPage, fetchTxPage]);
 
@@ -1176,21 +1167,6 @@ export default function DashboardPage() {
       setHealthSnapshots(updated);
     } catch (e) { console.error(e); }
     finally { setHealthSaving(false); }
-  }
-
-  async function confirmTransfer(pair: TransferPair) {
-    const key = `${pair.expense.id}:${pair.income.id}`;
-    await Promise.all([
-      fetch(`/api/transactions/${pair.expense.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ category: "轉帳" }) }),
-      fetch(`/api/transactions/${pair.income.id}`,  { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ category: "轉帳" }) }),
-    ]);
-    setTransferPairs(p => p.filter(x => `${x.expense.id}:${x.income.id}` !== key));
-    fetchData();
-  }
-
-  function dismissTransfer(pair: TransferPair) {
-    const key = `${pair.expense.id}:${pair.income.id}`;
-    setDismissedPairs(prev => new Set(Array.from(prev).concat(key)));
   }
 
   function dupKey(pair: DuplicatePair) { return `${pair.a.id}:${pair.b.id}`; }
@@ -3721,14 +3697,14 @@ export default function DashboardPage() {
                                 「其他」佔支出 {otherPct}%，分類不夠明確
                               </p>
                               <p className="text-[14px] mt-0.5" style={{ color: "#9A6042" }}>
-                                建議建立帳號對照表，讓轉帳交易自動標記正確分類
+                                建議使用 Claude 分類清理，批次將「其他」交易修正為正確分類
                               </p>
                             </div>
                             <button
-                              onClick={() => setActiveTab("payees")}
+                              onClick={() => setActiveTab("clean-other")}
                               className="flex-shrink-0 text-[14px] font-bold px-3 py-1.5 rounded-lg transition-opacity hover:opacity-80"
                               style={{ background: "#9A3412", color: "#FED7AA" }}>
-                              前往設定
+                              前往清理
                             </button>
                           </div>
                         )}
@@ -3997,54 +3973,6 @@ export default function DashboardPage() {
         {/* ── Transactions ── */}
         {activeTab === "transactions" && (
           <div className="space-y-4">
-
-            {/* Transfer review */}
-            {transferPairs.filter(p => !dismissedPairs.has(`${p.expense.id}:${p.income.id}`)).length > 0 && (
-              <Card>
-                <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--border-inner)" }}>
-                  <p className="text-[15px] font-bold text-[var(--text-primary)]">疑似自我轉帳</p>
-                  <p className="text-[14px] mt-0.5" style={{ color: "var(--text-muted)" }}>以下交易可能是帳戶間轉帳，確認後將排除於收支統計</p>
-                </div>
-                <div className="divide-y" style={{ borderColor: "var(--border-inner)" }}>
-                  {transferPairs
-                    .filter(p => !dismissedPairs.has(`${p.expense.id}:${p.income.id}`))
-                    .map(pair => (
-                      <div key={`${pair.expense.id}:${pair.income.id}`} className="px-6 py-4">
-                        <div className="flex items-start gap-4 flex-wrap">
-                          <div className="flex-1 min-w-0 space-y-1.5">
-                            <div className="flex items-center gap-2 text-[14px]">
-                              <span className="font-semibold" style={{ color: "#F87171" }}>支出</span>
-                              <SourceBadge source={pair.expense.source} />
-                              <span className="font-bold text-[var(--text-primary)]">NT$ {fmt(pair.expense.amount)}</span>
-                              <span style={{ color: "var(--text-muted)" }}>{pair.expense.date}</span>
-                            </div>
-                            <p className="text-[14px] truncate" style={{ color: "var(--text-muted)" }}>{pair.expense.note || "—"}</p>
-                            <div className="flex items-center gap-2 text-[14px]">
-                              <span className="font-semibold" style={{ color: "#34D399" }}>收入</span>
-                              <SourceBadge source={pair.income.source} />
-                              <span className="font-bold text-[var(--text-primary)]">NT$ {fmt(pair.income.amount)}</span>
-                              <span style={{ color: "var(--text-muted)" }}>{pair.income.date}</span>
-                            </div>
-                            <p className="text-[14px] truncate" style={{ color: "var(--text-muted)" }}>{pair.income.note || "—"}</p>
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <button onClick={() => confirmTransfer(pair)}
-                              className="px-3 py-1.5 rounded-lg text-[14px] font-bold transition-opacity hover:opacity-80"
-                              style={{ background: "var(--btn-gradient)", color: "#fff" }}>
-                              確認轉帳
-                            </button>
-                            <button onClick={() => dismissTransfer(pair)}
-                              className="px-3 py-1.5 rounded-lg text-[14px] font-semibold transition-opacity hover:opacity-70"
-                              style={{ border: "1px solid var(--border)", color: "var(--text-muted)" }}>
-                              不是轉帳
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </Card>
-            )}
 
             {/* ── 收支小結常駐卡 ── */}
             {data && (() => {
@@ -4731,7 +4659,7 @@ export default function DashboardPage() {
         {activeTab === "grad-school"       && <GradSchoolPlanner       isDemo={isDemo.current} />}
 
         {/* ── Payees ── */}
-        {activeTab === "payees"      && <PayeeManager />}
+
         {activeTab === "categories"  && <CategoryManager isDemo={isDemo.current} />}
 
         {/* ── Import ── */}
