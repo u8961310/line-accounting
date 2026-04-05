@@ -30,6 +30,7 @@ import CategoryManager from "@/components/CategoryManager";
 import UserGuide from "@/components/UserGuide";
 import DuplicateReview from "@/components/DuplicateReview";
 import { THEMES, themeToCSS, type AppTheme } from "@/lib/themes";
+import { getDailyQuote, getRandomQuote, type FinancialQuote } from "@/lib/quotes";
 import type { TransferPair } from "@/app/api/transfer-candidates/route";
 import type { DuplicatePair } from "@/app/api/duplicate-candidates/route";
 import type { HealthSnapshot } from "@/app/api/health-score/snapshots/route";
@@ -585,6 +586,7 @@ export default function DashboardPage() {
   const [aiInsightLoading, setAiInsightLoading] = useState(false);
   const [aiInsightErr,     setAiInsightErr]     = useState<string | null>(null);
   const [aiInsightOpen,    setAiInsightOpen]    = useState(true);
+  const [dailyQuote,       setDailyQuote]       = useState<FinancialQuote>(() => getDailyQuote());
   const [aiInsightMonth,   setAiInsightMonth]   = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; });
   const [notionSyncingInsight, setNotionSyncingInsight] = useState(false);
   const [notionInsightUrl,     setNotionInsightUrl]     = useState<string | null>(null);
@@ -1804,6 +1806,35 @@ export default function DashboardPage() {
         {/* ── Charts tab ── */}
         {!loading && activeTab === "charts" && (
           <div className="flex flex-col gap-5">
+
+            {/* ── 每日財務箴言 ── */}
+            {(() => {
+              const isBible = dailyQuote.type === "bible";
+              return (
+                <div className="flex items-start gap-3 px-4 py-3.5 rounded-2xl"
+                  style={{
+                    background: isBible ? "rgba(99,102,241,0.07)" : "rgba(220,38,38,0.06)",
+                    border: `1px solid ${isBible ? "rgba(99,102,241,0.2)" : "rgba(220,38,38,0.18)"}`,
+                  }}>
+                  <span className="text-[22px] flex-shrink-0 mt-0.5">{isBible ? "✝️" : "🏮"}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] leading-relaxed font-medium" style={{ color: "var(--text-primary)" }}>
+                      「{dailyQuote.text}」
+                    </p>
+                    <p className="text-[12px] mt-1.5" style={{ color: isBible ? "#818CF8" : "#F87171" }}>
+                      — {dailyQuote.source}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setDailyQuote(q => getRandomQuote(q))}
+                    title="換一則"
+                    className="flex-shrink-0 text-[13px] px-2 py-1 rounded-lg transition-opacity hover:opacity-60"
+                    style={{ color: "var(--text-muted)" }}>
+                    🔀
+                  </button>
+                </div>
+              );
+            })()}
 
             {/* ── 自訂卡片按鈕 ── */}
             <div className="flex justify-end">
