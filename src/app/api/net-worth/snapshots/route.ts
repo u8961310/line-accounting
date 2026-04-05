@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/net-worth/snapshots — 取得所有歷史快照
 export async function GET(): Promise<NextResponse> {
   const user = await prisma.user.findFirst({ where: { lineUserId: "dashboard_user" } });

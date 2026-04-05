@@ -3,6 +3,8 @@ import { verifySignature, replyMessage, replyRawMessage, getUserProfile } from "
 import { parseExpenseText } from "@/lib/parser";
 import { prisma } from "@/lib/db";
 import {
+
+export const dynamic = "force-dynamic";
   buildRecordedMessage,
   buildSummaryMessage,
   buildRecentMessage,

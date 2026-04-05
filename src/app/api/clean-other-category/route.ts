@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { logAudit } from "@/lib/audit";
 
+export const dynamic = "force-dynamic";
+
 const DASHBOARD_USER = "dashboard_user";
 const BATCH_SIZE = 50; // max per Claude call
 

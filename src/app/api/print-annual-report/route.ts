@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const yearParam   = request.nextUrl.searchParams.get("year");
   const year        = yearParam ? parseInt(yearParam, 10) : new Date().getFullYear();

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 export type NotifSeverity = "danger" | "warn" | "info";
 export type NotifType     = "budget" | "bill" | "goal";
 

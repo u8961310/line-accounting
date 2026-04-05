@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 const BUILTIN_EXPENSE = ["飲食","交通","娛樂","購物","醫療","居住","教育","通訊","保險","水電","美容","運動","旅遊","訂閱","寵物","現金","轉帳","其他"];
 const BUILTIN_INCOME  = ["薪資","獎金","兼職","投資","租金","退款","現金","轉帳","其他"];
 

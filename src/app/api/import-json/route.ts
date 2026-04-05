@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 
+export const dynamic = "force-dynamic";
+
 interface BackupRow {
   date:     string;
   type:     string;

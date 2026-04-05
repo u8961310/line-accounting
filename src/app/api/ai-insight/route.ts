@@ -4,6 +4,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@notionhq/client";
 import { logAudit } from "@/lib/audit";
 
+export const dynamic = "force-dynamic";
+
 // ── 圖表 URL 產生器（QuickChart.io，免費無須金鑰） ────────────────────────────
 const CHART_COLORS = [
   "#4299E1", "#48BB78", "#F6AD55", "#FC8181", "#B794F4",

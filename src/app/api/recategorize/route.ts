@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { batchCategorize } from "@/lib/csv/categorizer";
 import { ParsedTransaction, BankSource } from "@/lib/csv/types";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(): Promise<NextResponse> {
   // 檢查 API key 是否存在
   if (!process.env.ANTHROPIC_API_KEY) {

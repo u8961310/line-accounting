@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { syncWorthToNotion } from "@/lib/notion";
 import { logAudit } from "@/lib/audit";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(): Promise<NextResponse> {
   if (!process.env.NOTION_TOKEN || !process.env.NOTION_NET_WORTH_DB_ID) {
     return NextResponse.json({ error: "未設定 NOTION_TOKEN 或 NOTION_NET_WORTH_DB_ID" }, { status: 400 });

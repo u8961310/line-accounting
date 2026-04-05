@@ -3,6 +3,8 @@ import { parseCsv, parseXlsFile } from "@/lib/csv";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 
+export const dynamic = "force-dynamic";
+
 const XLS_EXTENSIONS = [".xls", ".xlsx"];
 
 export async function POST(request: NextRequest): Promise<NextResponse> {

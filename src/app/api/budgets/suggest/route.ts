@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/budgets/suggest?months=3
 // 根據過去 N 個月的實際支出，計算各分類平均值並建議預算上限（平均 × 1.1）
 export async function GET(req: NextRequest) {
