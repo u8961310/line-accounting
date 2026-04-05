@@ -221,8 +221,8 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // 先讀文字，偵測格式（動態 import 避免 build 時 pdf-parse 讀測試檔案）
-    const pdfParse = (await import("pdf-parse")).default;
+    // 直接引用 lib 路徑，繞過 pdf-parse index.js 在 build 時讀測試檔的問題
+    const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
     const pdfData  = await pdfParse(buffer);
     const text     = pdfData.text;
 
