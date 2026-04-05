@@ -495,6 +495,8 @@ export default function DashboardPage() {
   const isDemo = useRef(typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1");
   // Tab 快取：記錄已成功載入過資料的 Tab，切回時不重新 fetch
   const loadedTabs = useRef<Set<TabId>>(new Set());
+  // 快照自動儲存：每個 session 只執行一次
+  const autoSavedSnapshots = useRef(false);
 
   const [data,       setData]       = useState<SummaryData | null>(null);
   const [balances,   setBalances]   = useState<BankBalanceItem[]>([]);
@@ -601,9 +603,7 @@ export default function DashboardPage() {
   const [yoyData,            setYoyData]            = useState<{ cur: { byCategory: CategorySummary[]; totals: { income: number; expense: number; net: number } }; prev: { byCategory: CategorySummary[]; totals: { income: number; expense: number; net: number } }; curMonth: string; prevMonth: string } | null>(null);
   const [loansTimeline,      setLoansTimeline]      = useState<LoanTimelineItem[]>([]);
   const [nwSnapshots,        setNwSnapshots]        = useState<{ month: string; netWorth: number; assets: number; debt: number }[]>([]);
-  const [snapshotSaving,     setSnapshotSaving]     = useState(false);
   const [healthSnapshots,    setHealthSnapshots]    = useState<HealthSnapshot[]>([]);
-  const [healthSaving,       setHealthSaving]       = useState(false);
   const [compareMonthA,      setCompareMonthA]      = useState<string>("");
   const [compareMonthB,      setCompareMonthB]      = useState<string>("");
   const [compareDataA,       setCompareDataA]       = useState<{ byCategory: CategorySummary[]; totals: { income: number; expense: number; net: number } } | null>(null);
@@ -1022,6 +1022,49 @@ export default function DashboardPage() {
       .catch(() => {});
   }, [activeTab]);
 
+  // 自動 upsert 快照：圖表 Tab 載入後，data + netWorth 就緒時執行一次
+  useEffect(() => {
+    if (activeTab !== "charts") return;
+    if (isDemo.current) return;
+    if (autoSavedSnapshots.current) return;
+    if (!data || !netWorth) return;
+    autoSavedSnapshots.current = true;
+
+    // 淨資產快照
+    void fetch("/api/net-worth/snapshots", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        month:    currentMonth,
+        netWorth: netWorth.netWorth,
+        assets:   netWorth.totalAssets,
+        debt:     netWorth.totalDebt,
+      }),
+    })
+      .then(r => r.json())
+      .then((d: { month: string; netWorth: number; assets: number; debt: number }[]) => { if (Array.isArray(d)) setNwSnapshots(d); })
+      .catch(() => {});
+
+    // 財務健康評分快照
+    const savingsRate     = (data.totals?.income ?? 0) > 0 ? ((data.totals.income - data.totals.expense) / data.totals.income) * 100 : 0;
+    const debtRatio       = (netWorth.totalAssets ?? 0) > 0 ? (netWorth.totalDebt / netWorth.totalAssets) * 100 : 0;
+    const budgetAdherence = budgetOverview.length > 0
+      ? (budgetOverview.filter(b => b.amount > 0 && b.spent <= b.amount).length / budgetOverview.filter(b => b.amount > 0).length) * 100
+      : 100;
+    const savingsScore = savingsRate >= 30 ? 100 : savingsRate >= 20 ? 75 : savingsRate >= 10 ? 50 : savingsRate > 0 ? 25 : 0;
+    const debtScore    = debtRatio  <= 20 ? 100 : debtRatio  <= 40 ? 75 : debtRatio  <= 60 ? 50 : 25;
+    const budgetScore  = budgetAdherence >= 100 ? 100 : budgetAdherence >= 80 ? 75 : budgetAdherence >= 60 ? 50 : 25;
+    const score        = Math.round(savingsScore * 0.4 + debtScore * 0.3 + budgetScore * 0.3);
+    void fetch("/api/health-score/snapshots", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ month: currentMonth, score, savingsScore, debtScore, budgetScore, savingsRate, debtRatio, budgetAdherence }),
+    })
+      .then(r => r.json())
+      .then((d: HealthSnapshot[]) => { if (Array.isArray(d)) setHealthSnapshots(d); })
+      .catch(() => {});
+  }, [activeTab, data, netWorth, budgetOverview, currentMonth]);
+
   // 財務目標
   useEffect(() => {
     if (activeTab !== "charts") return;
@@ -1133,40 +1176,6 @@ export default function DashboardPage() {
       setCompareDataB(rB as typeof compareDataB);
     } catch (e) { console.error(e); }
     finally { setCompareLoading(false); }
-  }
-
-  async function saveNwSnapshot() {
-    if (!netWorth) return;
-    setSnapshotSaving(true);
-    try {
-      await fetch("/api/net-worth/snapshots", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          month:    currentMonth,
-          netWorth: netWorth.netWorth,
-          assets:   netWorth.totalAssets,
-          debt:     netWorth.totalDebt,
-        }),
-      });
-      const updated = await fetch("/api/net-worth/snapshots").then(r => r.json()) as typeof nwSnapshots;
-      setNwSnapshots(updated);
-    } catch (e) { console.error(e); }
-    finally { setSnapshotSaving(false); }
-  }
-
-  async function saveHealthSnapshot(payload: HealthSnapshot) {
-    setHealthSaving(true);
-    try {
-      await fetch("/api/health-score/snapshots", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(payload),
-      });
-      const updated = await fetch("/api/health-score/snapshots").then(r => r.json()) as HealthSnapshot[];
-      setHealthSnapshots(updated);
-    } catch (e) { console.error(e); }
-    finally { setHealthSaving(false); }
   }
 
   function dupKey(pair: DuplicatePair) { return `${pair.a.id}:${pair.b.id}`; }
@@ -1788,19 +1797,22 @@ export default function DashboardPage() {
 
             {/* ── 每日財務箴言 ── */}
             {(() => {
-              const isBible = dailyQuote.type === "bible";
+              const quoteStyle = {
+                bible:    { bg: "rgba(99,102,241,0.07)",  border: "rgba(99,102,241,0.2)",  icon: "✝️",  color: "#818CF8" },
+                guan:     { bg: "rgba(220,38,38,0.06)",   border: "rgba(220,38,38,0.18)",  icon: "🏮",  color: "#F87171" },
+                wenchang: { bg: "rgba(234,179,8,0.07)",   border: "rgba(234,179,8,0.22)",  icon: "📖",  color: "#FBBF24" },
+                buddha:   { bg: "rgba(251,146,60,0.07)",  border: "rgba(251,146,60,0.22)", icon: "☸️",  color: "#FB923C" },
+              };
+              const s = quoteStyle[dailyQuote.type] ?? quoteStyle.guan;
               return (
                 <div className="flex items-start gap-3 px-4 py-3.5 rounded-2xl"
-                  style={{
-                    background: isBible ? "rgba(99,102,241,0.07)" : "rgba(220,38,38,0.06)",
-                    border: `1px solid ${isBible ? "rgba(99,102,241,0.2)" : "rgba(220,38,38,0.18)"}`,
-                  }}>
-                  <span className="text-[22px] flex-shrink-0 mt-0.5">{isBible ? "✝️" : "🏮"}</span>
+                  style={{ background: s.bg, border: `1px solid ${s.border}` }}>
+                  <span className="text-[22px] flex-shrink-0 mt-0.5">{s.icon}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-[14px] leading-relaxed font-medium" style={{ color: "var(--text-primary)" }}>
                       「{dailyQuote.text}」
                     </p>
-                    <p className="text-[12px] mt-1.5" style={{ color: isBible ? "#818CF8" : "#F87171" }}>
+                    <p className="text-[12px] mt-1.5" style={{ color: s.color }}>
                       — {dailyQuote.source}
                     </p>
                   </div>
@@ -2647,11 +2659,6 @@ export default function DashboardPage() {
                   { label: "負債比",  score: debtScore,    detail: debtRatio > 100 ? `${(debtRatio / 100).toFixed(1)}x` : `${debtRatio.toFixed(0)}%`, weight: "30%" },
                   { label: "預算達成",score: budgetScore,  detail: `${budgetAdherence.toFixed(0)}%`, weight: "30%" },
                 ];
-                const currentPayload: HealthSnapshot = {
-                  month: currentMonth, score: total,
-                  savingsScore, debtScore, budgetScore,
-                  savingsRate, debtRatio, budgetAdherence,
-                };
                 return (
                   <Card className="p-5">
                     <div className="flex items-center gap-5">
@@ -2691,19 +2698,10 @@ export default function DashboardPage() {
                       }));
                       return (
                         <div className="mt-5 pt-4" style={{ borderTop: "1px solid var(--border-inner)" }}>
-                          <div className="flex items-center justify-between mb-3">
-                            <p className="text-[14px] font-semibold" style={{ color: "var(--text-sub)" }}>
-                              健康評分趨勢
-                              <span className="ml-2 font-normal" style={{ color: "var(--text-muted)" }}>{healthSnapshots.length} 個月記錄</span>
-                            </p>
-                            <button
-                              onClick={() => saveHealthSnapshot(currentPayload)}
-                              disabled={healthSaving || isDemo.current}
-                              className="text-[14px] font-semibold px-3 py-1 rounded-lg transition-opacity hover:opacity-70 disabled:opacity-40"
-                              style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)", color: "var(--text-sub)" }}>
-                              {healthSaving ? "記錄中…" : `📌 記錄 ${currentMonth}`}
-                            </button>
-                          </div>
+                          <p className="text-[14px] font-semibold mb-3" style={{ color: "var(--text-sub)" }}>
+                            健康評分趨勢
+                            <span className="ml-2 font-normal" style={{ color: "var(--text-muted)" }}>{healthSnapshots.length} 個月記錄</span>
+                          </p>
                           <ResponsiveContainer width="100%" height={140}>
                             <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
                               <XAxis dataKey="month" tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
@@ -2726,19 +2724,6 @@ export default function DashboardPage() {
                       );
                     })()}
 
-                    {/* No snapshots yet — show record prompt */}
-                    {healthSnapshots.length === 0 && (
-                      <div className="mt-4 pt-4 flex items-center justify-between" style={{ borderTop: "1px solid var(--border-inner)" }}>
-                        <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>記錄每月評分，即可追蹤健康趨勢</p>
-                        <button
-                          onClick={() => saveHealthSnapshot(currentPayload)}
-                          disabled={healthSaving || isDemo.current}
-                          className="text-[14px] font-semibold px-3 py-1 rounded-lg transition-opacity hover:opacity-70 disabled:opacity-40"
-                          style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)", color: "var(--text-sub)" }}>
-                          {healthSaving ? "記錄中…" : `📌 記錄 ${currentMonth}`}
-                        </button>
-                      </div>
-                    )}
                   </Card>
                 );
               })()}</div>}
@@ -2856,14 +2841,7 @@ export default function DashboardPage() {
                 const hasRealData = nwSnapshots.length > 0;
                 return (
                   <Card className="p-6">
-                    <div className="flex items-start justify-between mb-0.5">
-                      <p className="text-[16px] font-bold text-[var(--text-primary)]">淨資產趨勢</p>
-                      <button onClick={saveNwSnapshot} disabled={snapshotSaving || isDemo.current}
-                        className="text-[14px] font-semibold px-3 py-1.5 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-40"
-                        style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--accent-light)" }}>
-                        {snapshotSaving ? "記錄中…" : `📌 記錄 ${currentMonth}`}
-                      </button>
-                    </div>
+                    <p className="text-[16px] font-bold text-[var(--text-primary)] mb-1">淨資產趨勢</p>
                     <p className="text-[14px] mb-5" style={{ color: "var(--text-sub)" }}>
                       {hasRealData ? `${nwSnapshots.length} 筆真實快照 + 推估補齊` : `近 ${history.length} 個月淨資產變化（推估）`}
                     </p>
@@ -2890,7 +2868,7 @@ export default function DashboardPage() {
                       </LineChart>
                     </ResponsiveContainer>
                     <p className="text-[14px] mt-2" style={{ color: "var(--text-muted)" }}>
-                      📌 = 已記錄快照（精確）　空心 = 推估值　點擊「記錄」可把今月存入歷史
+                      📌 = 已記錄快照（精確）　空心 = 推估值（自動記錄）
                     </p>
                   </Card>
                 );
