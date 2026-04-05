@@ -29,6 +29,7 @@ import SavingsPlan from "@/components/SavingsPlan";
 import CategoryManager from "@/components/CategoryManager";
 import UserGuide from "@/components/UserGuide";
 import DuplicateReview from "@/components/DuplicateReview";
+import CleanOtherCategory from "@/components/CleanOtherCategory";
 import { THEMES, themeToCSS, type AppTheme } from "@/lib/themes";
 import { getDailyQuote, getRandomQuote, type FinancialQuote } from "@/lib/quotes";
 import type { TransferPair } from "@/app/api/transfer-candidates/route";
@@ -52,7 +53,7 @@ interface NetWorth {
 }
 type TabId = "charts" | "transactions" | "loans" | "budget" | "subscriptions" | "annual"
   | "retirement" | "fire" | "income-stability" | "expense-ratio" | "account-flow" | "spending-forecast" | "cashflow-forecast" | "bill-calendar" | "grad-school" | "savings-plan" | "education-program"
-  | "payees" | "import" | "guide" | "audit" | "categories" | "duplicate-review";
+  | "payees" | "import" | "guide" | "audit" | "categories" | "duplicate-review" | "clean-other";
 interface MonthDetail {
   byCategory: CategorySummary[];
   totals: { income: number; expense: number; net: number };
@@ -106,6 +107,7 @@ const TOOLS_TABS: { id: TabId; label: string }[] = [
   { id: "categories",       label: "自訂分類" },
   { id: "import",           label: "匯入資料" },
   { id: "duplicate-review", label: "重複審核" },
+  { id: "clean-other",      label: "分類清理" },
   { id: "audit",            label: "稽核記錄" },
   { id: "guide",            label: "使用說明" },
 ];
@@ -767,7 +769,7 @@ export default function DashboardPage() {
 
   // Tab 記憶 — paint 前同步讀取，避免閃爍；useLayoutEffect 不在 server 執行，hydration 不會失配
   useLayoutEffect(() => {
-    const VALID_TABS = new Set<string>(["charts","transactions","loans","budget","subscriptions","annual","retirement","fire","income-stability","expense-ratio","account-flow","spending-forecast","cashflow-forecast","bill-calendar","grad-school","savings-plan","education-program","payees","import","guide","audit","categories","duplicate-review"]);
+    const VALID_TABS = new Set<string>(["charts","transactions","loans","budget","subscriptions","annual","retirement","fire","income-stability","expense-ratio","account-flow","spending-forecast","cashflow-forecast","bill-calendar","grad-school","savings-plan","education-program","payees","import","guide","audit","categories","duplicate-review","clean-other"]);
     const saved = localStorage.getItem("activeTab") as TabId | null;
     if (saved && VALID_TABS.has(saved)) setActiveTab(saved);
   }, []);
@@ -4849,6 +4851,9 @@ export default function DashboardPage() {
 
         {/* ── Duplicate Review ── */}
         {activeTab === "duplicate-review" && <DuplicateReview />}
+
+        {/* ── Clean Other Category ── */}
+        {activeTab === "clean-other" && <CleanOtherCategory />}
 
       </main>
 
