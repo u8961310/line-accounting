@@ -179,14 +179,15 @@ interface SplitTx { id: string; date: string; amount: number; type: string; cate
 
 // ── Chart card visibility ─────────────────────────────────────────────────────
 const CHART_CARDS_DEFAULT = [
-  { id: "savings-summary", label: "儲蓄規劃摘要" },
-  { id: "month-compare",   label: "當月 vs 上月" },
-  { id: "net-worth",       label: "淨資產總覽"   },
-  { id: "health-score",    label: "財務健康評分" },
-  { id: "trend",           label: "趨勢追蹤"     },
-  { id: "goals",           label: "財務目標"     },
-  { id: "distribution",   label: "收支分佈"     },
-  { id: "fixed-loans",    label: "固定支出與貸款" },
+  { id: "savings-summary",  label: "儲蓄規劃摘要"   },
+  { id: "month-compare",    label: "當月 vs 上月"   },
+  { id: "net-worth",        label: "淨資產總覽"     },
+  { id: "health-score",     label: "財務健康評分"   },
+  { id: "budget-overview",  label: "分類預算快覽列" },
+  { id: "trend",            label: "趨勢追蹤"       },
+  { id: "goals",            label: "財務目標"       },
+  { id: "distribution",     label: "收支分佈"       },
+  { id: "fixed-loans",      label: "固定支出與貸款" },
 ];
 type ChartCardId = (typeof CHART_CARDS_DEFAULT)[number]["id"];
 const CHART_VIS_KEY   = "chart_cards_v1";
@@ -520,6 +521,7 @@ export default function DashboardPage() {
   const [txAmountMin,    setTxAmountMin]    = useState("");
   const [txAmountMax,    setTxAmountMax]    = useState("");
   const [txTypeFilter,   setTxTypeFilter]   = useState<"" | "收入" | "支出">("");
+  const [txSourceFilter, setTxSourceFilter] = useState<string[]>([]);
   const [txMoodFilter,   setTxMoodFilter]   = useState<string>("");
   const [moodPickerId,   setMoodPickerId]   = useState<string | null>(null);
   const [batchMode,      setBatchMode]      = useState(false);
@@ -599,6 +601,7 @@ export default function DashboardPage() {
   const [calendarMonth,      setCalendarMonth]      = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; });
   const [calendarTxs,        setCalendarTxs]        = useState<{ date: string; amount: number; type: string }[]>([]);
   const [calendarOpen,       setCalendarOpen]       = useState(false);
+  const [calendarView,       setCalendarView]       = useState<"calendar" | "heatmap">("calendar");
   const [merchantOpen,       setMerchantOpen]       = useState(false);
   type GoalItem = { id: string; name: string; emoji: string; targetAmount: number; savedAmount: number; linkedSource: string | null; deadline: string | null; note: string };
   const [goals,          setGoals]          = useState<GoalItem[]>([]);
@@ -669,8 +672,9 @@ export default function DashboardPage() {
       if (txTypeFilter) p.set("type",      txTypeFilter);
       if (txDateFrom)   p.set("dateFrom",  txDateFrom);
       if (txDateTo)     p.set("dateTo",    txDateTo);
-      if (txAmountMin)  p.set("amountMin", txAmountMin);
-      if (txAmountMax)  p.set("amountMax", txAmountMax);
+      if (txAmountMin)              p.set("amountMin", txAmountMin);
+      if (txAmountMax)              p.set("amountMax", txAmountMax);
+      if (txSourceFilter.length > 0) p.set("source",   txSourceFilter.join(","));
       const res = await fetch(`/api/transactions?${p.toString()}`);
       const d = await res.json() as TxPage;
       if (append) {
@@ -680,7 +684,7 @@ export default function DashboardPage() {
       }
     } catch (e) { console.error(e); }
     finally { setTxLoading(false); }
-  }, [txFilterCat, txSearch, txTypeFilter, txDateFrom, txDateTo, txAmountMin, txAmountMax]);
+  }, [txFilterCat, txSearch, txTypeFilter, txDateFrom, txDateTo, txAmountMin, txAmountMax, txSourceFilter]);
 
   const fetchAuditLogs = useCallback(async (page: number, filter: string, silent = false) => {
     if (!silent) setAuditLoading(true);
@@ -793,7 +797,7 @@ export default function DashboardPage() {
     const t = setTimeout(() => { setTxData(null); setTxPage(1); fetchTxPage(1); }, 400);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [txTypeFilter, txDateFrom, txDateTo, txAmountMin, txAmountMax]);
+  }, [txTypeFilter, txDateFrom, txDateTo, txAmountMin, txAmountMax, txSourceFilter]);
 
   // Load saved theme
   useEffect(() => {
@@ -1802,6 +1806,57 @@ export default function DashboardPage() {
                       </span>
                     </div>
                   ))}
+                </div>
+              );
+            })()}
+
+            {/* ── 分類預算快覽列 ── */}
+            {showCard("budget-overview") && budgetOverview.filter(b => b.amount > 0).length > 0 && (() => {
+              const cats = budgetOverview.filter(b => b.amount > 0).sort((a, b) => (b.spent / b.amount) - (a.spent / a.amount));
+              const currentMth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+              return (
+                <div className="rounded-2xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border)", order: cardOrder.indexOf("budget-overview") }}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-[16px] font-bold" style={{ color: "var(--text-primary)" }}>分類預算快覽</p>
+                      <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>{currentMth} 各分類預算使用率</p>
+                    </div>
+                    <button onClick={() => setActiveTab("budget")}
+                      className="text-[13px] px-3 py-1 rounded-lg transition-opacity hover:opacity-70"
+                      style={{ background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border-inner)" }}>
+                      管理預算 →
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                    {cats.map(b => {
+                      const pct = Math.min((b.spent / b.amount) * 100, 100);
+                      const over = b.spent > b.amount;
+                      const near = !over && pct >= 80;
+                      const barColor = over ? "#EF4444" : near ? "#F59E0B" : "#10B981";
+                      const bgColor  = over ? "rgba(239,68,68,0.15)" : near ? "rgba(245,158,11,0.12)" : "rgba(16,185,129,0.12)";
+                      return (
+                        <div key={b.category}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[13px] font-semibold" style={{ color: over ? "#F87171" : near ? "#F59E0B" : "var(--text-sub)" }}>
+                              {b.category}{over ? " 🚨" : near ? " ⚠️" : ""}
+                            </span>
+                            <span className="text-[12px] tabular-nums" style={{ color: "var(--text-muted)" }}>
+                              {fmt(b.spent)} / {fmt(b.amount)}
+                            </span>
+                          </div>
+                          <div className="h-2 rounded-full overflow-hidden" style={{ background: bgColor }}>
+                            <div className="h-full rounded-full transition-all duration-500"
+                              style={{ width: `${over ? 100 : pct}%`, background: barColor }} />
+                          </div>
+                          {over && (
+                            <p className="text-[11px] mt-0.5 text-right" style={{ color: "#F87171" }}>
+                              超支 NT$ {fmt(b.spent - b.amount)}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })()}
@@ -2943,16 +2998,20 @@ export default function DashboardPage() {
                 );
               })()}
 
-              {/* ── 收支日曆視圖（可折疊）── */}
+              {/* ── 收支日曆 / 消費熱力圖（可折疊，雙視圖）── */}
               <div>
                 <button
                   onClick={() => setCalendarOpen(o => !o)}
                   className="w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-opacity hover:opacity-80"
                   style={{ background: "var(--bg-card)", border: "1px solid var(--border-inner)" }}>
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">📅</span>
-                    <span className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>收支日曆</span>
-                    <span className="text-[13px]" style={{ color: "var(--text-muted)" }}>每日收支熱力圖</span>
+                    <span className="text-lg">{calendarView === "heatmap" ? "🔥" : "📅"}</span>
+                    <span className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>
+                      {calendarView === "heatmap" ? "消費熱力圖" : "收支日曆"}
+                    </span>
+                    <span className="text-[13px]" style={{ color: "var(--text-muted)" }}>
+                      {calendarView === "heatmap" ? "支出深淺熱力圖" : "每日收支淨額"}
+                    </span>
                   </div>
                   <span className="text-[14px] font-bold transition-transform" style={{ color: "var(--text-muted)", transform: calendarOpen ? "rotate(180deg)" : "rotate(0deg)" }}>▼</span>
                 </button>
@@ -2960,6 +3019,13 @@ export default function DashboardPage() {
                   const [cy, cm] = calendarMonth.split("-").map(Number);
                   const firstDay = new Date(cy, cm - 1, 1).getDay();
                   const daysInMonth = new Date(cy, cm, 0).getDate();
+                  const prevMonth = cm === 1 ? `${cy-1}-12` : `${cy}-${String(cm-1).padStart(2,"0")}`;
+                  const nextMonth = cm === 12 ? `${cy+1}-01` : `${cy}-${String(cm+1).padStart(2,"0")}`;
+                  const todayKey = new Date().toISOString().split("T")[0];
+                  const cells: (number | null)[] = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+                  while (cells.length % 7 !== 0) cells.push(null);
+
+                  // 收支日曆資料
                   const dayMap = new Map<string, { income: number; expense: number }>();
                   for (const tx of calendarTxs) {
                     const key = tx.date;
@@ -2969,14 +3035,29 @@ export default function DashboardPage() {
                     dayMap.set(key, cur);
                   }
                   const maxAbs = Math.max(...Array.from(dayMap.values()).map(d => Math.abs(d.income - d.expense)), 1);
-                  const cells: (number | null)[] = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
-                  while (cells.length % 7 !== 0) cells.push(null);
-                  const prevMonth = cm === 1 ? `${cy-1}-12` : `${cy}-${String(cm-1).padStart(2,"0")}`;
-                  const nextMonth = cm === 12 ? `${cy+1}-01` : `${cy}-${String(cm+1).padStart(2,"0")}`;
+
+                  // 熱力圖資料（只看支出）
+                  const dayExpMap = new Map<string, number>();
+                  for (const tx of calendarTxs) {
+                    if (tx.type !== "支出") continue;
+                    dayExpMap.set(tx.date, (dayExpMap.get(tx.date) ?? 0) + tx.amount);
+                  }
+                  const maxExp = Math.max(...Array.from(dayExpMap.values()), 1);
+
                   return (
                     <Card className="p-6 mt-2">
-                      <div className="flex items-center justify-between mb-4">
-                        <p className="text-[16px] font-bold text-[var(--text-primary)]">收支日曆</p>
+                      {/* Header：月份導航 + 視圖切換 */}
+                      <div className="flex items-center justify-between mb-4 gap-3">
+                        <div className="flex rounded-xl overflow-hidden flex-shrink-0" style={{ border: "1px solid var(--border-inner)" }}>
+                          {([["calendar", "📅 收支"] , ["heatmap", "🔥 熱力"]] as const).map(([v, label]) => (
+                            <button key={v} onClick={() => setCalendarView(v)}
+                              className="px-3 py-1.5 text-[13px] font-semibold transition-colors"
+                              style={{
+                                background: calendarView === v ? "var(--accent)" : "var(--bg-input)",
+                                color:      calendarView === v ? "#fff" : "var(--text-muted)",
+                              }}>{label}</button>
+                          ))}
+                        </div>
                         <div className="flex items-center gap-2">
                           <button onClick={() => setCalendarMonth(prevMonth)}
                             className="px-2 py-1 rounded-lg text-[14px]" style={{ color: "var(--text-sub)", background: "var(--bg-input)" }}>←</button>
@@ -2985,41 +3066,90 @@ export default function DashboardPage() {
                             className="px-2 py-1 rounded-lg text-[14px]" style={{ color: "var(--text-sub)", background: "var(--bg-input)" }}>→</button>
                         </div>
                       </div>
+
+                      {/* 星期 header */}
                       <div className="grid grid-cols-7 gap-1 mb-1">
                         {["日","一","二","三","四","五","六"].map(d => (
-                          <div key={d} className="text-center text-[14px] font-semibold py-1" style={{ color: "var(--text-muted)" }}>{d}</div>
+                          <div key={d} className="text-center text-[13px] font-semibold py-1" style={{ color: "var(--text-muted)" }}>{d}</div>
                         ))}
                       </div>
-                      <div className="grid grid-cols-7 gap-1">
-                        {cells.map((day, i) => {
-                          if (!day) return <div key={`e${i}`} />;
-                          const key = `${calendarMonth}-${String(day).padStart(2,"0")}`;
-                          const d = dayMap.get(key);
-                          const net = d ? d.income - d.expense : 0;
-                          const intensity = d ? Math.min(Math.abs(net) / maxAbs, 1) : 0;
-                          const isToday = key === new Date().toISOString().split("T")[0];
-                          return (
-                            <div key={key} className="rounded-lg p-1.5 min-h-[52px] flex flex-col"
-                              style={{
-                                background: d ? (net >= 0 ? `rgba(16,185,129,${0.08 + intensity * 0.25})` : `rgba(239,68,68,${0.08 + intensity * 0.25})`) : "transparent",
-                                border: isToday ? "1px solid var(--accent)" : "1px solid transparent",
-                              }}>
-                              <span className="text-[14px] font-semibold leading-none mb-1"
-                                style={{ color: isToday ? "var(--accent)" : "var(--text-muted)" }}>{day}</span>
-                              {d && (
-                                <span className="text-[14px] tabular-nums font-bold leading-tight"
-                                  style={{ color: net >= 0 ? "#10B981" : "#F87171" }}>
-                                  {net >= 0 ? "+" : "−"}{(Math.abs(net) >= 1000 ? `${(Math.abs(net)/1000).toFixed(1)}k` : fmt(Math.abs(net)))}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="flex items-center gap-4 mt-3 text-[14px]" style={{ color: "var(--text-muted)" }}>
-                        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "rgba(16,185,129,0.4)" }} />收入 &gt; 支出</span>
-                        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "rgba(239,68,68,0.4)" }} />支出 &gt; 收入</span>
-                      </div>
+
+                      {/* 格子 */}
+                      {calendarView === "calendar" ? (
+                        <>
+                          <div className="grid grid-cols-7 gap-1">
+                            {cells.map((day, i) => {
+                              if (!day) return <div key={`e${i}`} />;
+                              const key = `${calendarMonth}-${String(day).padStart(2,"0")}`;
+                              const d = dayMap.get(key);
+                              const net = d ? d.income - d.expense : 0;
+                              const intensity = d ? Math.min(Math.abs(net) / maxAbs, 1) : 0;
+                              const isToday = key === todayKey;
+                              return (
+                                <div key={key} className="rounded-lg p-1.5 min-h-[52px] flex flex-col"
+                                  style={{
+                                    background: d ? (net >= 0 ? `rgba(16,185,129,${0.08 + intensity * 0.25})` : `rgba(239,68,68,${0.08 + intensity * 0.25})`) : "transparent",
+                                    border: isToday ? "1px solid var(--accent)" : "1px solid transparent",
+                                  }}>
+                                  <span className="text-[13px] font-semibold leading-none mb-1"
+                                    style={{ color: isToday ? "var(--accent)" : "var(--text-muted)" }}>{day}</span>
+                                  {d && (
+                                    <span className="text-[13px] tabular-nums font-bold leading-tight"
+                                      style={{ color: net >= 0 ? "#10B981" : "#F87171" }}>
+                                      {net >= 0 ? "+" : "−"}{Math.abs(net) >= 1000 ? `${(Math.abs(net)/1000).toFixed(1)}k` : fmt(Math.abs(net))}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="flex items-center gap-4 mt-3 text-[13px]" style={{ color: "var(--text-muted)" }}>
+                            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "rgba(16,185,129,0.4)" }} />收入 &gt; 支出</span>
+                            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "rgba(239,68,68,0.4)" }} />支出 &gt; 收入</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-7 gap-1">
+                            {cells.map((day, i) => {
+                              if (!day) return <div key={`e${i}`} className="aspect-square" />;
+                              const key = `${calendarMonth}-${String(day).padStart(2,"0")}`;
+                              const exp = dayExpMap.get(key) ?? 0;
+                              const intensity = exp > 0 ? 0.15 + (exp / maxExp) * 0.75 : 0;
+                              const isToday = key === todayKey;
+                              return (
+                                <div key={key}
+                                  className="aspect-square rounded-lg flex flex-col items-center justify-center gap-0.5"
+                                  title={exp > 0 ? `${key}　NT$ ${fmt(exp)}` : key}
+                                  style={{
+                                    background: exp > 0 ? `rgba(239,68,68,${intensity})` : "var(--bg-input)",
+                                    border: isToday ? "1.5px solid var(--accent)" : "1px solid transparent",
+                                    minHeight: 36,
+                                  }}>
+                                  <span className="text-[11px] font-semibold leading-none"
+                                    style={{ color: isToday ? "var(--accent)" : intensity > 0.5 ? "#fff" : "var(--text-muted)" }}>
+                                    {day}
+                                  </span>
+                                  {exp > 0 && (
+                                    <span className="text-[10px] tabular-nums leading-none font-bold"
+                                      style={{ color: intensity > 0.5 ? "rgba(255,255,255,0.85)" : "#F87171" }}>
+                                      {exp >= 1000 ? `${(exp/1000).toFixed(1)}k` : fmt(exp)}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="flex items-center gap-2 mt-3">
+                            <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>低</span>
+                            {[0.15, 0.3, 0.5, 0.7, 0.9].map(v => (
+                              <div key={v} className="w-5 h-3 rounded-sm" style={{ background: `rgba(239,68,68,${v})` }} />
+                            ))}
+                            <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>高</span>
+                            <span className="text-[12px] ml-auto" style={{ color: "var(--text-muted)" }}>最高單日 NT$ {fmt(Math.round(maxExp))}</span>
+                          </div>
+                        </>
+                      )}
                     </Card>
                   );
                 })()}
@@ -3557,10 +3687,10 @@ export default function DashboardPage() {
             <Card>
               {/* Search + filter toggle */}
               {(() => {
-                const advActive = !!(txTypeFilter || txDateFrom || txDateTo || txAmountMin || txAmountMax);
+                const advActive = !!(txTypeFilter || txDateFrom || txDateTo || txAmountMin || txAmountMax || txSourceFilter.length > 0);
                 const inputCls = "rounded-lg px-3 py-2 text-[14px] outline-none w-full";
                 const inputSty = { background: "var(--bg-input)", border: "1px solid var(--border-inner)", color: "var(--text-primary)" } as React.CSSProperties;
-                const clearAll = () => { setTxTypeFilter(""); setTxDateFrom(""); setTxDateTo(""); setTxAmountMin(""); setTxAmountMax(""); };
+                const clearAll = () => { setTxTypeFilter(""); setTxDateFrom(""); setTxDateTo(""); setTxAmountMin(""); setTxAmountMax(""); setTxSourceFilter([]); };
                 return (
                   <div style={{ borderBottom: "1px solid var(--border-inner)" }}>
                     {/* Search row */}
@@ -3618,9 +3748,73 @@ export default function DashboardPage() {
                             ))}
                           </div>
                         </div>
+                        {/* Source filter */}
+                        <div className="flex items-start gap-2">
+                          <span className="text-[14px] font-semibold w-12 flex-shrink-0 pt-1" style={{ color: "var(--text-sub)" }}>來源</span>
+                          <div className="flex flex-wrap gap-1">
+                            {(Object.entries(SOURCE_LABELS) as [string, string][]).filter(([src]) => {
+                              const fixed = new Set(["line", "manual", "cash"]);
+                              return fixed.has(src) || balances.some(b => b.source === src);
+                            }).map(([src, label]) => {
+                              const active = txSourceFilter.includes(src);
+                              return (
+                                <button key={src}
+                                  onClick={() => setTxSourceFilter(prev =>
+                                    prev.includes(src) ? prev.filter(s => s !== src) : [...prev, src]
+                                  )}
+                                  className="px-2.5 py-1 rounded-lg text-[13px] font-semibold transition-colors"
+                                  style={active
+                                    ? { background: "var(--accent)", color: "#fff" }
+                                    : { background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border-inner)" }}>
+                                  {label}
+                                </button>
+                              );
+                            })}
+                            {txSourceFilter.length > 0 && (
+                              <button onClick={() => setTxSourceFilter([])}
+                                className="px-2.5 py-1 rounded-lg text-[13px] font-semibold transition-opacity hover:opacity-70"
+                                style={{ background: "rgba(239,68,68,0.1)", color: "#F87171", border: "1px solid rgba(239,68,68,0.2)" }}>
+                                清除
+                              </button>
+                            )}
+                          </div>
+                        </div>
                         {/* Date range */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[14px] font-semibold w-12 flex-shrink-0" style={{ color: "var(--text-sub)" }}>日期</span>
+                          {/* 快速日期按鈕 */}
+                          {(() => {
+                            const now = new Date();
+                            const pad = (n: number) => String(n).padStart(2, "0");
+                            const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+                            const todayStr = fmt(now);
+                            const dow = now.getDay();
+                            const weekStart = new Date(now); weekStart.setDate(now.getDate() - dow);
+                            const weekEnd = new Date(now); weekEnd.setDate(now.getDate() + (6 - dow));
+                            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                            const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                            const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                            const prevMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 0);
+                            const presets = [
+                              { label: "今天", from: todayStr,        to: todayStr },
+                              { label: "本週", from: fmt(weekStart),  to: fmt(weekEnd) },
+                              { label: "本月", from: fmt(monthStart), to: fmt(monthEnd) },
+                              { label: "上月", from: fmt(prevMonthStart), to: fmt(prevMonthEnd) },
+                            ];
+                            return presets.map(p => {
+                              const active = txDateFrom === p.from && txDateTo === p.to;
+                              return (
+                                <button key={p.label}
+                                  onClick={() => { setTxDateFrom(p.from); setTxDateTo(p.to); }}
+                                  className="px-2.5 py-1 rounded-lg text-[13px] font-semibold transition-colors"
+                                  style={active
+                                    ? { background: "var(--accent)", color: "#fff" }
+                                    : { background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border-inner)" }}>
+                                  {p.label}
+                                </button>
+                              );
+                            });
+                          })()}
                           <input type="date" value={txDateFrom} onChange={e => setTxDateFrom(e.target.value)} className={inputCls} style={{ ...inputSty, maxWidth: 140 }} />
                           <span className="text-[14px]" style={{ color: "var(--text-muted)" }}>—</span>
                           <input type="date" value={txDateTo}   onChange={e => setTxDateTo(e.target.value)}   className={inputCls} style={{ ...inputSty, maxWidth: 140 }} />
@@ -3662,7 +3856,7 @@ export default function DashboardPage() {
                     ＋ 新增
                   </button>
                   {/* Secondary actions */}
-                  <a href={`/api/transactions?${new URLSearchParams({ export: "csv", month: selectedMonth ?? currentMonth, ...(txFilterCat ? { category: txFilterCat } : {}), ...(txSearch ? { note: txSearch } : {}), ...(txTypeFilter ? { type: txTypeFilter } : {}), ...(txDateFrom ? { dateFrom: txDateFrom } : {}), ...(txDateTo ? { dateTo: txDateTo } : {}), ...(txAmountMin ? { amountMin: txAmountMin } : {}), ...(txAmountMax ? { amountMax: txAmountMax } : {}) }).toString()}`}
+                  <a href={`/api/transactions?${new URLSearchParams({ export: "csv", month: selectedMonth ?? currentMonth, ...(txFilterCat ? { category: txFilterCat } : {}), ...(txSearch ? { note: txSearch } : {}), ...(txTypeFilter ? { type: txTypeFilter } : {}), ...(txDateFrom ? { dateFrom: txDateFrom } : {}), ...(txDateTo ? { dateTo: txDateTo } : {}), ...(txAmountMin ? { amountMin: txAmountMin } : {}), ...(txAmountMax ? { amountMax: txAmountMax } : {}), ...(txSourceFilter.length > 0 ? { source: txSourceFilter.join(",") } : {}) }).toString()}`}
                     download title="匯出 CSV"
                     className="text-[14px] font-semibold px-2.5 py-1.5 rounded-lg transition-opacity hover:opacity-80 inline-flex items-center gap-1"
                     style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-sub)" }}>
