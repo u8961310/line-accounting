@@ -4,6 +4,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { PrismaClient } from "@prisma/client";
+import { getSubscriptionsFromNotion } from "../lib/notion.js";
 
 const prisma = new PrismaClient();
 
@@ -213,6 +214,50 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       name: "get_notifications",
       description: "取得所有財務警示通知：預算超標、信用卡帳單到期、貸款繳款日、目標逾期",
       inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "set_budget",
+      description: "新增或更新某分類的每月預算金額。category 必填，amount 為每月預算上限（0 表示刪除）。",
+      inputSchema: {
+        type: "object",
+        required: ["category", "amount"],
+        properties: {
+          category:    { type: "string", description: "分類名稱，如「飲食」「交通」" },
+          amount:      { type: "number", description: "每月預算金額（≥0）" },
+          carryoverPct: { type: "number", description: "結餘轉入下月百分比（0–100，預設 0）" },
+        },
+      },
+    },
+    {
+      name: "add_loan_payment",
+      description: "記錄一筆貸款還款，自動更新剩餘本金。可先用 get_loans 查詢 loanId。",
+      inputSchema: {
+        type: "object",
+        required: ["loanId", "totalPaid", "interestPaid"],
+        properties: {
+          loanId:       { type: "string", description: "貸款 id（get_loans 回傳的 id）" },
+          totalPaid:    { type: "number", description: "本次還款總額（本金 + 利息）" },
+          interestPaid: { type: "number", description: "其中利息部分" },
+          paymentDate:  { type: "string", description: "還款日期 YYYY-MM-DD，不填為今天" },
+          note:         { type: "string", description: "備註（可選）" },
+        },
+      },
+    },
+    {
+      name: "get_subscriptions",
+      description: "查詢從 Notion 同步的完整訂閱明細：每項名稱、月費、年費、週期、下次扣款日",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "get_anomaly_detection",
+      description: "以 z-score 偵測當月各分類支出是否異常偏高，回傳超標分類與分析數據",
+      inputSchema: {
+        type: "object",
+        properties: {
+          month:    { type: "string", description: "月份 YYYY-MM，不填則為本月" },
+          lookback: { type: "number", description: "對比過去幾個月（2–6，預設 4）" },
+        },
+      },
     },
     {
       name: "add_transaction",
@@ -1671,6 +1716,147 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             },
           }, null, 2),
         }],
+      };
+    }
+
+    // ── set_budget ───────────────────────────────────────────────────────────
+    if (name === "set_budget") {
+      const category    = a.category    as string;
+      const amount      = a.amount      as number;
+      const carryoverPct = Math.max(0, Math.min(100, Math.round((a.carryoverPct as number | undefined) ?? 0)));
+
+      if (!category) return { content: [{ type: "text", text: "category 必填" }], isError: true };
+      if (amount < 0) return { content: [{ type: "text", text: "amount 不可為負數" }], isError: true };
+
+      const user = await getDashUser();
+      if (!user) return { content: [{ type: "text", text: "找不到使用者" }], isError: true };
+
+      const budget = await prisma.budget.upsert({
+        where:  { userId_category: { userId: user.id, category } },
+        update: { amount, carryoverPct },
+        create: { userId: user.id, category, amount, carryoverPct },
+      });
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({
+          success: true,
+          message: `✅ 已設定「${category}」每月預算 NT$${amount}`,
+          budget:  { id: budget.id, category, amount, carryoverPct },
+        }, null, 2) }],
+      };
+    }
+
+    // ── add_loan_payment ─────────────────────────────────────────────────────
+    if (name === "add_loan_payment") {
+      const loanId       = a.loanId       as string;
+      const totalPaid    = a.totalPaid    as number;
+      const interestPaid = a.interestPaid as number;
+      const paymentDate  = a.paymentDate  as string | undefined;
+      const note         = (a.note        as string | undefined) ?? "";
+
+      const loan = await prisma.loan.findUnique({ where: { id: loanId } });
+      if (!loan) return { content: [{ type: "text", text: `找不到貸款 id: ${loanId}` }], isError: true };
+      if (totalPaid <= 0 || interestPaid < 0 || interestPaid > totalPaid)
+        return { content: [{ type: "text", text: "金額參數錯誤：totalPaid > 0，interestPaid ≥ 0 且 ≤ totalPaid" }], isError: true };
+
+      const principalPaid  = totalPaid - interestPaid;
+      const newRemaining   = Math.max(0, Number(loan.remainingPrincipal) - principalPaid);
+      const date           = paymentDate ? new Date(paymentDate) : new Date();
+      date.setHours(0, 0, 0, 0);
+
+      const [payment] = await prisma.$transaction([
+        prisma.loanPayment.create({
+          data: { loanId, paymentDate: date, principalPaid, interestPaid, totalPaid, remainingPrincipal: newRemaining, note },
+        }),
+        prisma.loan.update({
+          where: { id: loanId },
+          data:  { remainingPrincipal: newRemaining, status: newRemaining <= 0 ? "paid_off" : loan.status },
+        }),
+      ]);
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({
+          success: true,
+          message: `✅ 已記錄「${loan.name}」還款 NT$${totalPaid}，剩餘本金 NT$${Math.round(newRemaining)}`,
+          payment: { id: payment.id, date: date.toISOString().split("T")[0], totalPaid, interestPaid, principalPaid, remainingPrincipal: newRemaining },
+        }, null, 2) }],
+      };
+    }
+
+    // ── get_subscriptions ────────────────────────────────────────────────────
+    if (name === "get_subscriptions") {
+      const items = await getSubscriptionsFromNotion();
+      const monthlyTotal = items.reduce((s, i) => s + i.monthlyAmount, 0);
+      return {
+        content: [{ type: "text", text: JSON.stringify({
+          items: items.map(i => ({
+            name:            i.name,
+            fee:             i.fee,
+            cycle:           i.cycle,
+            monthlyAmount:   Math.round(i.monthlyAmount),
+            nextBillingDate: i.nextBillingDate,
+            tags:            i.tags,
+          })),
+          monthlyTotal: Math.round(monthlyTotal),
+          yearlyTotal:  Math.round(monthlyTotal * 12),
+        }, null, 2) }],
+      };
+    }
+
+    // ── get_anomaly_detection ─────────────────────────────────────────────────
+    if (name === "get_anomaly_detection") {
+      const now      = new Date();
+      const month    = (a.month as string | undefined) ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const lookback = Math.min(6, Math.max(2, Math.round((a.lookback as number | undefined) ?? 4)));
+      const [y, m]   = month.split("-").map(Number);
+
+      const user = await getDashUser();
+      if (!user) return { content: [{ type: "text", text: JSON.stringify({ anomalies: [] }) }] };
+
+      const curStart = new Date(y, m - 1, 1);
+      const curEnd   = new Date(y, m,     1);
+
+      const allTxs = await prisma.transaction.findMany({
+        where: {
+          userId: user.id,
+          type:   "支出",
+          date:   { gte: new Date(y, m - 1 - lookback, 1), lt: curEnd },
+          NOT:    { category: "轉帳" },
+        },
+        select: { date: true, category: true, amount: true },
+      });
+
+      const curMap  = new Map<string, number>();
+      const prevMap = new Map<string, number>();
+
+      for (const tx of allTxs) {
+        const amt = Number(tx.amount);
+        if (tx.date >= curStart) {
+          curMap.set(tx.category, (curMap.get(tx.category) ?? 0) + amt);
+        } else {
+          const mn = `${tx.date.getFullYear()}-${tx.date.getMonth()}`;
+          const key = `${tx.category}||${mn}`;
+          prevMap.set(key, (prevMap.get(key) ?? 0) + amt);
+        }
+      }
+
+      const anomalies = [];
+      for (const [category, current] of Array.from(curMap.entries())) {
+        const prevMonths: number[] = [];
+        for (let i = 1; i <= lookback; i++) {
+          const d   = new Date(y, m - 1 - i, 1);
+          const key = `${category}||${d.getFullYear()}-${d.getMonth()}`;
+          prevMonths.push(prevMap.get(key) ?? 0);
+        }
+        const mean   = prevMonths.reduce((s, v) => s + v, 0) / lookback;
+        const stddev = Math.sqrt(prevMonths.reduce((s, v) => s + (v - mean) ** 2, 0) / lookback);
+        const zscore = stddev > 0 ? (current - mean) / stddev : 0;
+        if (zscore >= 1.5) anomalies.push({ category, current: Math.round(current), mean: Math.round(mean), zscore: Math.round(zscore * 100) / 100, prevMonths: prevMonths.map(Math.round) });
+      }
+
+      anomalies.sort((a, b) => b.zscore - a.zscore);
+      return {
+        content: [{ type: "text", text: JSON.stringify({ month, anomalies }, null, 2) }],
       };
     }
 
