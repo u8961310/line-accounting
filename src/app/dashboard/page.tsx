@@ -537,6 +537,7 @@ export default function DashboardPage() {
   const [batchCat,       setBatchCat]       = useState("");
   const [batchNote,      setBatchNote]      = useState("");
   const [batchUpdating,  setBatchUpdating]  = useState(false);
+  const [batchDeleting,  setBatchDeleting]  = useState(false);
   const [categories,      setCategories]      = useState<string[]>([]);
   const [customExpenseCats, setCustomExpenseCats] = useState<string[]>([]);
   const [customIncomeCats,  setCustomIncomeCats]  = useState<string[]>([]);
@@ -1351,6 +1352,27 @@ export default function DashboardPage() {
     setBatchMode(false);
     setBatchNote("");
     setBatchUpdating(false);
+  }
+
+  async function batchDeleteSelected() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`確定要刪除選取的 ${selectedIds.size} 筆記錄？此操作無法復原。`)) return;
+    setBatchDeleting(true);
+    try {
+      await fetch("/api/transactions/batch-delete", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      setTxData(prev => prev ? {
+        ...prev,
+        total: prev.total - selectedIds.size,
+        items: prev.items.filter(tx => !selectedIds.has(tx.id)),
+      } : prev);
+      setSelectedIds(new Set());
+      setBatchMode(false);
+    } catch (e) { console.error(e); }
+    setBatchDeleting(false);
   }
 
   async function updateTxMood(id: string, mood: string | null) {
@@ -4535,6 +4557,13 @@ export default function DashboardPage() {
                         className="text-[13px] px-2 py-1 rounded-lg transition-all"
                         style={{ background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border)" }}>
                         {selectedIds.size === txData!.items.length ? "取消全選" : "全選本頁"}
+                      </button>
+                      <button
+                        disabled={selectedIds.size === 0 || batchDeleting}
+                        onClick={batchDeleteSelected}
+                        className="text-[13px] font-bold px-3 py-1.5 rounded-lg transition-all disabled:opacity-40"
+                        style={{ background: "rgba(239,68,68,0.15)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.35)" }}>
+                        {batchDeleting ? "刪除中…" : `🗑 刪除 ${selectedIds.size} 筆`}
                       </button>
                       <div className="flex-1" />
                       {/* Merge button — only show when 2+ selected */}

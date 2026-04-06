@@ -215,6 +215,47 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: { type: "object", properties: {} },
     },
     {
+      name: "add_transaction",
+      description: "新增一筆交易記帳。type 為「收入」或「支出」，amount 為正整數，category 從分類清單選填，note 為備註，date 不填則為今天。",
+      inputSchema: {
+        type: "object",
+        required: ["type", "amount", "category"],
+        properties: {
+          type:     { type: "string", description: "「收入」或「支出」" },
+          amount:   { type: "number", description: "金額（正整數）" },
+          category: { type: "string", description: "分類，支出：飲食/交通/娛樂/購物/醫療/居住/教育/通訊/保險/水電/美容/運動/旅遊/訂閱/寵物/其他；收入：薪資/獎金/兼職/其他" },
+          note:     { type: "string", description: "備註（可選）" },
+          date:     { type: "string", description: "日期 YYYY-MM-DD，不填為今天" },
+        },
+      },
+    },
+    {
+      name: "update_transaction",
+      description: "修改一筆現有交易的欄位。id 可由 get_transactions 查詢取得，只需填要修改的欄位。",
+      inputSchema: {
+        type: "object",
+        required: ["id"],
+        properties: {
+          id:       { type: "string", description: "交易 id" },
+          category: { type: "string", description: "新分類" },
+          note:     { type: "string", description: "新備註" },
+          amount:   { type: "number", description: "新金額" },
+          type:     { type: "string", description: "新類型（收入 / 支出）" },
+        },
+      },
+    },
+    {
+      name: "delete_transaction",
+      description: "刪除一筆交易。id 可由 get_transactions 查詢取得，刪除前請先確認內容。",
+      inputSchema: {
+        type: "object",
+        required: ["id"],
+        properties: {
+          id: { type: "string", description: "交易 id" },
+        },
+      },
+    },
+    {
       name: "get_annual_report",
       description: "指定年度完整財報摘要：年度收支、各月趨勢、分類排行、儲蓄率、最高/最低消費月",
       inputSchema: {
@@ -1630,6 +1671,87 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             },
           }, null, 2),
         }],
+      };
+    }
+
+    // ── add_transaction ──────────────────────────────────────────────────────
+    if (name === "add_transaction") {
+      const type     = a.type     as string;
+      const amount   = a.amount   as number;
+      const category = a.category as string;
+      const note     = (a.note    as string | undefined) ?? "";
+      const dateStr  = a.date     as string | undefined;
+
+      if (!["收入", "支出"].includes(type))
+        return { content: [{ type: "text", text: "type 必須為「收入」或「支出」" }], isError: true };
+      if (!amount || amount <= 0)
+        return { content: [{ type: "text", text: "amount 必須為正整數" }], isError: true };
+
+      const user = await getDashUser();
+      if (!user) return { content: [{ type: "text", text: "找不到使用者" }], isError: true };
+
+      const date = dateStr ? new Date(dateStr) : new Date();
+      date.setHours(0, 0, 0, 0);
+
+      const tx = await prisma.transaction.create({
+        data: { userId: user.id, type, amount, category, note, date, source: "mcp" },
+        select: { id: true, date: true, type: true, amount: true, category: true, note: true },
+      });
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({
+          success: true,
+          message: `✅ 已記錄${type} NT$${amount}（${category}）`,
+          transaction: { ...tx, amount: Number(tx.amount), date: tx.date.toISOString().split("T")[0] },
+        }, null, 2) }],
+      };
+    }
+
+    // ── update_transaction ───────────────────────────────────────────────────
+    if (name === "update_transaction") {
+      const id = a.id as string;
+      const data: Record<string, unknown> = {};
+      if (a.category !== undefined) data.category = a.category;
+      if (a.note     !== undefined) data.note     = a.note;
+      if (a.type     !== undefined) data.type     = a.type;
+      if (a.amount   !== undefined && Number(a.amount) > 0) data.amount = Number(a.amount);
+
+      if (Object.keys(data).length === 0)
+        return { content: [{ type: "text", text: "未指定任何要修改的欄位" }], isError: true };
+
+      const tx = await prisma.transaction.update({
+        where: { id },
+        data: data as never,
+        select: { id: true, date: true, type: true, amount: true, category: true, note: true },
+      });
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({
+          success: true,
+          message: `✅ 已更新交易 ${id}`,
+          transaction: { ...tx, amount: Number(tx.amount), date: tx.date.toISOString().split("T")[0] },
+        }, null, 2) }],
+      };
+    }
+
+    // ── delete_transaction ───────────────────────────────────────────────────
+    if (name === "delete_transaction") {
+      const id = a.id as string;
+
+      const tx = await prisma.transaction.findUnique({
+        where:  { id },
+        select: { date: true, type: true, amount: true, category: true, note: true },
+      });
+      if (!tx) return { content: [{ type: "text", text: `找不到交易 id: ${id}` }], isError: true };
+
+      await prisma.transaction.delete({ where: { id } });
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({
+          success: true,
+          message: `🗑 已刪除交易 ${id}`,
+          deleted: { ...tx, amount: Number(tx.amount), date: tx.date.toISOString().split("T")[0] },
+        }, null, 2) }],
       };
     }
 
