@@ -22,6 +22,7 @@ export interface NotificationsResponse {
 }
 
 export async function GET(): Promise<NextResponse> {
+  try {
   const user = await prisma.user.findUnique({ where: { lineUserId: "dashboard_user" } });
   if (!user) return NextResponse.json({ notifications: [], dangerCount: 0, warnCount: 0 });
 
@@ -178,4 +179,8 @@ export async function GET(): Promise<NextResponse> {
     dangerCount:   notes.filter(n => n.severity === "danger").length,
     warnCount:     notes.filter(n => n.severity === "warn").length,
   } satisfies NotificationsResponse);
+  } catch (e) {
+    console.error("[notifications]", e);
+    return NextResponse.json({ notifications: [], dangerCount: 0, warnCount: 0 });
+  }
 }
