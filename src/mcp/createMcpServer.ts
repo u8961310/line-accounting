@@ -4,7 +4,6 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { PrismaClient } from "@prisma/client";
-import { getSubscriptionsFromNotion } from "../lib/notion.js";
 
 const prisma = new PrismaClient();
 
@@ -1785,6 +1784,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
     // ── get_subscriptions ────────────────────────────────────────────────────
     if (name === "get_subscriptions") {
+      const { getSubscriptionsFromNotion } = await import("../lib/notion.js");
       const items = await getSubscriptionsFromNotion();
       const monthlyTotal = items.reduce((s, i) => s + i.monthlyAmount, 0);
       return {

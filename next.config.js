@@ -21,7 +21,11 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
-  serverExternalPackages: ["@prisma/client", "prisma", "pdf-parse"],
+  serverExternalPackages: [
+    "@prisma/client", "prisma", "pdf-parse",
+    "@modelcontextprotocol/sdk",
+    "@notionhq/client",
+  ],
   async headers() {
     return [
       {
