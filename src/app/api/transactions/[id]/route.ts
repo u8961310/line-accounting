@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +9,15 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const tx = await prisma.transaction.findUnique({
+      where: { id: params.id },
+      select: { date: true, type: true, amount: true, category: true, note: true },
+    });
     await prisma.transaction.delete({ where: { id: params.id } });
+    void logAudit({
+      action:  "transaction_delete",
+      summary: { id: params.id, ...tx },
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error(e);

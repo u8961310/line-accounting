@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
+import { logAudit } from "@/lib/audit";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
 
     if (checkRateLimit(ip)) {
+      void logAudit({ action: "login", status: "error", errorMsg: `rate limited: ${ip}` });
       return NextResponse.json(
         { error: "嘗試次數過多，請 15 分鐘後再試" },
         { status: 429 },
@@ -57,6 +59,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       crypto.timingSafeEqual(inputBuf, adminBuf);
 
     if (!match) {
+      void logAudit({ action: "login", status: "error", errorMsg: `wrong password from ${ip}` });
       return NextResponse.json({ error: "密碼錯誤" }, { status: 401 });
     }
 
@@ -66,6 +69,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     session.isLoggedIn = true;
     await session.save();
 
+    void logAudit({ action: "login", status: "success", summary: { ip } });
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "登入失敗" }, { status: 500 });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import * as XLSX from "xlsx";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,7 @@ export async function GET(request: NextRequest) {
         mood: r.mood ?? null,
       }));
       const filename = `transactions-backup-${new Date().toISOString().split("T")[0]}.json`;
+      void logAudit({ action: "data_export", tool: "json", summary: { count: rows.length, filename } });
       return new NextResponse(JSON.stringify(data, null, 2), {
         headers: {
           "Content-Type": "application/json; charset=utf-8",
@@ -99,6 +101,7 @@ export async function GET(request: NextRequest) {
       XLSX.utils.book_append_sheet(wb, ws, "交易記錄");
       const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as number[];
       const filename = `transactions-${new Date().toISOString().split("T")[0]}.xlsx`;
+      void logAudit({ action: "data_export", tool: "xlsx", summary: { count: rows.length, filename } });
       return new NextResponse(new Uint8Array(buf), {
         headers: {
           "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -142,11 +145,13 @@ export async function GET(request: NextRequest) {
           r.source,
         ].join(",")
       );
-      const csv = [header, ...lines].join("\n");
+      const csv      = [header, ...lines].join("\n");
+      const filename = `transactions-${monthFilter ?? "all"}.csv`;
+      void logAudit({ action: "data_export", tool: "csv", summary: { count: rows.length, filename } });
       return new NextResponse("\uFEFF" + csv, {
         headers: {
           "Content-Type":        "text/csv; charset=utf-8",
-          "Content-Disposition": `attachment; filename="transactions-${monthFilter ?? "all"}.csv"`,
+          "Content-Disposition": `attachment; filename="${filename}"`,
         },
       });
     }

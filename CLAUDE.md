@@ -10,6 +10,7 @@
 | `/mcp-add [工具名] [描述]` | 新增 MCP 工具並更新文件 |
 | `/suggest-features` | 分析專案現況，提出新功能建議，確認後自動寫入 CLAUDE.md TODO |
 | `/update-guide` | 功能完成後判斷使用說明是否需要更新，若需要則直接修改 UserGuide.tsx |
+| `/deploy` | 部署 line-accounting 到 Zeabur |
 
 ## 技術棧
 - Next.js 14 App Router + TypeScript strict mode

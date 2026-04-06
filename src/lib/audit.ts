@@ -1,6 +1,13 @@
 import { prisma } from "@/lib/db";
 
-export type AuditAction = "mcp_call" | "csv_import" | "pdf_import" | "notion_sync" | "ai_recategorize" | "json_restore";
+export type AuditAction =
+  | "mcp_call"
+  | "csv_import" | "pdf_import" | "json_restore"
+  | "notion_sync"
+  | "ai_recategorize"
+  | "login"
+  | "transaction_delete"
+  | "data_export";
 
 interface LogAuditOptions {
   action: AuditAction;
