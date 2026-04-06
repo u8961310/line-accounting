@@ -5,7 +5,8 @@ import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
-const XLS_EXTENSIONS = [".xls", ".xlsx"];
+const ALLOWED_EXTENSIONS = [".csv", ".xls", ".xlsx"];
+const XLS_EXTENSIONS     = [".xls", ".xlsx"];
 
 // Always use the dashboard user — never trust a client-supplied lineUserId
 async function getDashboardUser() {
@@ -26,6 +27,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const fileName = file.name.toLowerCase();
+
+    if (!ALLOWED_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
+      return NextResponse.json({ error: "僅接受 CSV / XLS / XLSX 檔案" }, { status: 400 });
+    }
+
     const isXls = XLS_EXTENSIONS.some((ext) => fileName.endsWith(ext));
 
     const user = await getDashboardUser();

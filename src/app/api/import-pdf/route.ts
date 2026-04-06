@@ -215,8 +215,12 @@ export async function POST(req: NextRequest) {
     const file       = formData.get("file") as File | null;
     const creditCardId = formData.get("creditCardId") as string | null;
 
-    if (!file || !file.name.toLowerCase().endsWith(".pdf")) {
+    if (!file || !(file instanceof File)) {
       return NextResponse.json({ error: "請上傳 PDF 檔案" }, { status: 400 });
+    }
+
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      return NextResponse.json({ error: "僅接受 PDF 檔案" }, { status: 400 });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
