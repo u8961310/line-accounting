@@ -272,7 +272,7 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 #### 實際漏洞（需盡快修復）
 - [x] **登入暴力破解防護**：in-memory rate limit，同一 IP 15 分鐘內最多 10 次
 - [x] **密碼時序攻擊**：改用 `crypto.timingSafeEqual`
-- [ ] **上傳檔案無限制**：`/api/import`、`/api/import-pdf` 未驗證 `file.size` 及 MIME type，可上傳超大檔案耗盡記憶體。加入最大 10MB 限制與 `.csv/.xls/.xlsx/.pdf` 副檔名白名單驗證
+- [x] **上傳副檔名白名單**：`/api/import` 僅接受 `.csv/.xls/.xlsx`，`/api/import-pdf` 僅接受 `.pdf`
 - [x] **lineUserId 可偽造**：`/api/import` 改為伺服器端固定 `"dashboard_user"`，不再信任 client 傳入值
 
 #### 縱深防禦（建議加入）
