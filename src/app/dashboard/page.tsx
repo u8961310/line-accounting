@@ -1487,7 +1487,7 @@ export default function DashboardPage() {
           {/* Tab nav — 主 Tab 可橫向捲動，下拉選單在外側避免被裁切 */}
           <div className="flex items-stretch flex-1 min-w-0">
             {/* 主 Tab（可捲動） */}
-            <div className="flex items-stretch overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+            <div className="flex items-stretch overflow-x-auto no-scrollbar">
               {TABS.map(tab => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                   className="relative px-3 text-[13px] font-semibold tracking-wide transition-colors duration-200 whitespace-nowrap flex items-center gap-1"
@@ -2483,10 +2483,10 @@ export default function DashboardPage() {
               const b = balances.find(x => x.source === bankEditSource);
               const isCash = bankEditSource === "cash";
               return (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
                   style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
                   onClick={() => setBankEditSource(null)}>
-                  <div className="w-full max-w-sm rounded-2xl overflow-hidden"
+                  <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl overflow-hidden"
                     style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}
                     onClick={e => e.stopPropagation()}>
                     <div className="px-6 pt-5 pb-4 border-b" style={{ borderColor: "var(--border-inner)" }}>
@@ -3053,10 +3053,10 @@ export default function DashboardPage() {
 
               {/* Goal Modal */}
               {goalModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
                   style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
                   onClick={() => setGoalModal(null)}>
-                  <div className="w-full max-w-sm rounded-2xl overflow-hidden"
+                  <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl overflow-hidden"
                     style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}
                     onClick={e => e.stopPropagation()}>
                     <div className="px-6 pt-5 pb-4 border-b" style={{ borderColor: "var(--border-inner)" }}>
@@ -4896,10 +4896,10 @@ export default function DashboardPage() {
 
       {/* ── Split Transaction Modal ── */}
       {splitModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
           style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
           onClick={e => { if (e.target === e.currentTarget) setSplitModal(null); }}>
-          <div className="w-full max-w-md rounded-2xl p-6 space-y-4"
+          <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-6 space-y-4"
             style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 24px 60px rgba(0,0,0,0.4)" }}>
             <div className="flex items-center justify-between">
               <h3 className="text-[16px] font-bold" style={{ color: "var(--text-primary)" }}>分割交易</h3>
@@ -4980,10 +4980,10 @@ export default function DashboardPage() {
 
       {/* ── Merge Transactions Modal ── */}
       {mergeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
           style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
           onClick={e => { if (e.target === e.currentTarget) setMergeModal(false); }}>
-          <div className="w-full max-w-sm rounded-2xl p-6 space-y-4"
+          <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 space-y-4"
             style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 24px 60px rgba(0,0,0,0.4)" }}>
             <div className="flex items-center justify-between">
               <h3 className="text-[16px] font-bold" style={{ color: "var(--text-primary)" }}>合併 {selectedIds.size} 筆交易</h3>
@@ -5024,10 +5024,10 @@ export default function DashboardPage() {
 
       {/* ── Add Transaction Modal ── */}
       {addModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
           style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
           onClick={e => { if (e.target === e.currentTarget) setAddModal(false); }}>
-          <div className="w-full max-w-sm rounded-2xl p-6 space-y-4"
+          <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 space-y-4"
             style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 24px 60px rgba(0,0,0,0.4)" }}>
             <div className="flex items-center justify-between">
               <h3 className="text-[16px] font-bold" style={{ color: "var(--text-primary)" }}>新增記帳</h3>

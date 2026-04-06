@@ -157,8 +157,8 @@ const BILL_STATUS: Record<string, { label: string; color: string }> = {
 
 function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border" style={{ background: "var(--bg-card)", borderColor: "var(--border)", boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center sm:p-4">
+      <div className="w-full sm:max-w-md max-h-[85vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border" style={{ background: "var(--bg-card)", borderColor: "var(--border)", boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
         {children}
       </div>
     </div>

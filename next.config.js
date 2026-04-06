@@ -21,9 +21,11 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
-  serverExternalPackages: ["@prisma/client", "prisma", "pdf-parse"],
   experimental: {
     serverComponentsExternalPackages: [
+      "@prisma/client",
+      "prisma",
+      "pdf-parse",
       "@modelcontextprotocol/sdk",
       "@notionhq/client",
     ],

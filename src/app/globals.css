@@ -22,3 +22,7 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.35); border-radius: 9999px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(100,116,139,0.6); }
+
+/* ── No-scrollbar utility (Tab nav etc.) ────────────────────────────────── */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
