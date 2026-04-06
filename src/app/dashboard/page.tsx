@@ -1469,7 +1469,7 @@ export default function DashboardPage() {
 
       {/* ── Header (單行) ── */}
       <header className="sticky top-0 z-20 border-b" style={{ background: "var(--bg-card)", borderColor: "var(--border)", boxShadow: "var(--card-shadow)" }}>
-        <div className="max-w-6xl mx-auto px-6 h-[52px] flex items-stretch gap-2">
+        <div className="max-w-6xl mx-auto px-2 sm:px-6 h-[52px] flex items-stretch gap-2">
 
           {/* Logo */}
           <div className="flex items-center gap-2 flex-shrink-0 pr-1">
@@ -1478,7 +1478,7 @@ export default function DashboardPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <span className="text-[15px] font-extrabold tracking-tight whitespace-nowrap" style={{ color: "var(--text-primary)" }}>個人記帳</span>
+            <span className="hidden sm:inline text-[15px] font-extrabold tracking-tight whitespace-nowrap" style={{ color: "var(--text-primary)" }}>個人記帳</span>
           </div>
 
           {/* 分隔線 */}
@@ -1646,7 +1646,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {/* 月份範圍 */}
             <select value={months} onChange={e => setMonths(+e.target.value)}
-              className="text-[13px] font-medium rounded-lg px-2 py-1.5 outline-none cursor-pointer"
+              className="hidden sm:block text-[13px] font-medium rounded-lg px-2 py-1.5 outline-none cursor-pointer"
               style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-sub)" }}>
               <option value={3}>近 3 月</option>
               <option value={6}>近 6 月</option>
@@ -1701,9 +1701,12 @@ export default function DashboardPage() {
               setYoyData(null);
               fetchData();
             }}
-              className="text-[13px] font-semibold text-white px-3 py-1.5 rounded-lg transition-opacity hover:opacity-90"
+              className="w-8 h-8 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 flex items-center justify-center text-[13px] font-semibold text-white rounded-lg transition-opacity hover:opacity-90"
               style={{ background: "var(--btn-gradient)", boxShadow: "0 0 10px rgba(59,130,246,0.3)" }}>
-              重整
+              <svg className="w-3.5 h-3.5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span className="hidden sm:inline">重整</span>
             </button>
 
             {/* ⋯ 更多選單 */}
