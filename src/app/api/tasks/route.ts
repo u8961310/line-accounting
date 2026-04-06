@@ -53,6 +53,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       id:        t.id,
       title:     t.title,
       dueDate:   t.dueDate ? t.dueDate.toISOString().split("T")[0] : null,
+      dueTime:   t.dueTime,
       priority:  t.priority,
       status:    t.status,
       category:  t.category,
@@ -72,6 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const body = await request.json() as {
       title:     string;
       dueDate?:  string;  // YYYY-MM-DD
+      dueTime?:  string;  // HH:MM 台灣時間
       priority?: string;  // high | mid | low
       category?: string;
       note?:     string;
@@ -89,6 +91,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         userId:   user.id,
         title:    body.title.trim(),
         dueDate:  body.dueDate ? new Date(body.dueDate) : null,
+        dueTime:  body.dueTime ?? "",
         priority: body.priority ?? "mid",
         category: body.category ?? "其他",
         note:     body.note ?? "",
@@ -99,6 +102,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       id:       task.id,
       title:    task.title,
       dueDate:  task.dueDate ? task.dueDate.toISOString().split("T")[0] : null,
+      dueTime:  task.dueTime,
       priority: task.priority,
       status:   task.status,
       category: task.category,

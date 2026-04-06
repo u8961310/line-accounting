@@ -3,6 +3,31 @@ import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
+// ── GET /api/tasks/:id ───────────────────────────────────────────────────────
+
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: { id: string } },
+): Promise<NextResponse> {
+  try {
+    const task = await prisma.task.findUnique({ where: { id: params.id } });
+    if (!task) return NextResponse.json({ error: "不存在" }, { status: 404 });
+    return NextResponse.json({
+      id:       task.id,
+      title:    task.title,
+      dueDate:  task.dueDate ? task.dueDate.toISOString().split("T")[0] : null,
+      dueTime:  task.dueTime,
+      priority: task.priority,
+      status:   task.status,
+      category: task.category,
+      note:     task.note,
+    });
+  } catch (e) {
+    console.error("[GET /api/tasks/:id]", e);
+    return NextResponse.json({ error: "查詢失敗" }, { status: 500 });
+  }
+}
+
 // ── PATCH /api/tasks/:id ──────────────────────────────────────────────────────
 
 export async function PATCH(
@@ -13,6 +38,7 @@ export async function PATCH(
     const body = await request.json() as {
       title?:    string;
       dueDate?:  string | null;  // YYYY-MM-DD or null to clear
+      dueTime?:  string;         // HH:MM 台灣時間，"" 清除時間
       priority?: string;
       status?:   string;
       category?: string;
@@ -26,6 +52,7 @@ export async function PATCH(
     if (body.status   !== undefined) data.status   = body.status;
     if (body.category !== undefined) data.category = body.category;
     if (body.note     !== undefined) data.note     = body.note;
+    if (body.dueTime  !== undefined) data.dueTime  = body.dueTime;
     if (body.dueDate  !== undefined) {
       data.dueDate = body.dueDate ? new Date(body.dueDate) : null;
     }
@@ -43,6 +70,7 @@ export async function PATCH(
       id:       task.id,
       title:    task.title,
       dueDate:  task.dueDate ? task.dueDate.toISOString().split("T")[0] : null,
+      dueTime:  task.dueTime,
       priority: task.priority,
       status:   task.status,
       category: task.category,

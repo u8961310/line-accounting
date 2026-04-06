@@ -234,6 +234,7 @@ model Task {
   userId    String
   title     String
   dueDate   DateTime?
+  dueTime   String    @default("")      // HH:MM 台灣時間，空字串 = 無指定時間
   priority  String    @default("mid")   // high | mid | low
   status    String    @default("open")  // open | done
   category  String    @default("其他")  // 工作 | 生活 | 財務 | 其他
