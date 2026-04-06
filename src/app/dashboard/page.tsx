@@ -1487,7 +1487,7 @@ export default function DashboardPage() {
           {/* Tab nav — 主 Tab 可橫向捲動，下拉選單在外側避免被裁切 */}
           <div className="flex items-stretch flex-1 min-w-0">
             {/* 主 Tab（可捲動） */}
-            <div className="flex items-stretch overflow-x-auto no-scrollbar">
+            <div className="flex items-stretch overflow-x-auto no-scrollbar flex-1 min-w-0">
               {TABS.map(tab => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                   className="relative px-3 text-[13px] font-semibold tracking-wide transition-colors duration-200 whitespace-nowrap flex items-center gap-1"
@@ -1506,8 +1506,8 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            {/* 下拉選單群（不在 overflow 容器內，避免被裁切） */}
-            <div className="flex items-stretch flex-shrink-0">
+            {/* 下拉選單群（不在 overflow 容器內，避免被裁切）；手機改由 ⋯ 更多選單操作 */}
+            <div className="hidden sm:flex items-stretch flex-shrink-0">
 
               {/* ── 進階分析 下拉 ── */}
               {(() => {
@@ -1731,6 +1731,69 @@ export default function DashboardPage() {
                       border:      "1px solid var(--border)",
                       boxShadow:   "0 12px 40px rgba(0,0,0,0.5)",
                     }}>
+
+                    {/* 手機專用：月份範圍 + 分析/規劃/工具導覽 */}
+                    <div className="sm:hidden border-b" style={{ borderColor: "var(--border-inner)" }}>
+                      {/* 月份範圍 */}
+                      <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+                        <span className="text-[13px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>資料範圍</span>
+                        <select value={months} onChange={e => { setMonths(+e.target.value); setMoreOpen(false); }}
+                          className="text-[13px] font-medium rounded-lg px-2 py-1 outline-none cursor-pointer"
+                          style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-primary)" }}>
+                          <option value={3}>近 3 月</option>
+                          <option value={6}>近 6 月</option>
+                          <option value={12}>近 12 月</option>
+                        </select>
+                      </div>
+                      {/* 分析 */}
+                      <div className="px-4 pt-2 pb-1">
+                        <p className="text-[12px] font-semibold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>分析</p>
+                        <div className="grid grid-cols-2 gap-1">
+                          {ANALYSIS_TABS.map(t => (
+                            <button key={t.id} onClick={() => { setActiveTab(t.id); setMoreOpen(false); }}
+                              className="text-left px-2.5 py-1.5 rounded-lg text-[13px] font-medium transition-colors"
+                              style={{
+                                color: activeTab === t.id ? "var(--accent-light)" : "var(--text-primary)",
+                                background: activeTab === t.id ? "var(--bg-input)" : "transparent",
+                              }}>
+                              {t.icon} {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {/* 規劃 */}
+                      <div className="px-4 pt-2 pb-1">
+                        <p className="text-[12px] font-semibold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>規劃</p>
+                        <div className="grid grid-cols-2 gap-1">
+                          {PLANNING_TABS.map(t => (
+                            <button key={t.id} onClick={() => { setActiveTab(t.id); setMoreOpen(false); }}
+                              className="text-left px-2.5 py-1.5 rounded-lg text-[13px] font-medium transition-colors"
+                              style={{
+                                color: activeTab === t.id ? "var(--accent-light)" : "var(--text-primary)",
+                                background: activeTab === t.id ? "var(--bg-input)" : "transparent",
+                              }}>
+                              {t.icon} {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {/* 工具 */}
+                      <div className="px-4 pt-2 pb-3">
+                        <p className="text-[12px] font-semibold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>工具</p>
+                        <div className="grid grid-cols-2 gap-1">
+                          {TOOLS_TABS.map(t => (
+                            <button key={t.id} onClick={() => { setActiveTab(t.id); setMoreOpen(false); }}
+                              className="text-left px-2.5 py-1.5 rounded-lg text-[13px] font-medium transition-colors"
+                              style={{
+                                color: activeTab === t.id ? "var(--accent-light)" : "var(--text-primary)",
+                                background: activeTab === t.id ? "var(--bg-input)" : "transparent",
+                              }}>
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
 
                     {/* 主題切換 */}
                     <div className="px-4 py-3 border-b" style={{ borderColor: "var(--border-inner)" }}>
