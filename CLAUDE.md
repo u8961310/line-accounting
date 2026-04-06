@@ -205,9 +205,10 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 | 日期 (date) | date |
 | 來源 (select) | source |
 
-## 部署
-- 平台：Vercel
-- 正式 URL：（待填）
+## 部署（Zeabur）
+- Project ID: `69d2656c18daef21c603e19c`
+- Service ID: `69d265b318daef21c603e1c2`
+- Redeploy 指令：`npx zeabur@latest deploy --project-id 69d2656c18daef21c603e19c --service-id 69d265b318daef21c603e1c2 --json`
 - 健康檢查：`GET /api/health`
 
 ## MCP 工具清單
