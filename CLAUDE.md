@@ -258,27 +258,31 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 ## TODO
 
 > 優先順序：🔴 高 → 🟡 中 → 🟢 低
+>
+> **建議開工順序：**
+> 1. 資訊安全漏洞（先做，系統開著就是風險）
+> 2. MCP 寫入工具（`add/update/delete_transaction`，完成後 MCP 才能讀寫）
+> 3. 批量刪除 API（UI 依賴它，先建 API 再做前端）
+> 4. 以下 🟡 項目（獨立，任意順序）
+
+---
 
 ### 資訊安全（🔴 高優先）
 
 #### 實際漏洞（需盡快修復）
-- [ ] **登入暴力破解防護**：`/api/auth/login` 無速率限制，密碼可無限嘗試。加入 in-memory 或 Upstash Redis rate limit（e.g. 同一 IP 10 次失敗後鎖定 15 分鐘）
-- [ ] **密碼時序攻擊**：`body.password !== adminPassword` 明文比對可被 timing attack 利用，改用 `crypto.timingSafeEqual(Buffer.from(input), Buffer.from(secret))`
+- [x] **登入暴力破解防護**：in-memory rate limit，同一 IP 15 分鐘內最多 10 次
+- [x] **密碼時序攻擊**：改用 `crypto.timingSafeEqual`
 - [ ] **上傳檔案無限制**：`/api/import`、`/api/import-pdf` 未驗證 `file.size` 及 MIME type，可上傳超大檔案耗盡記憶體。加入最大 10MB 限制與 `.csv/.xls/.xlsx/.pdf` 副檔名白名單驗證
-- [ ] **lineUserId 可偽造**：`/api/import` 的 `lineUserId` 從 FormData 取得（client 控制），可建立任意 user。改為直接 hardcode `"dashboard_user"`（與其他所有 API 一致）
+- [x] **lineUserId 可偽造**：`/api/import` 改為伺服器端固定 `"dashboard_user"`，不再信任 client 傳入值
 
 #### 縱深防禦（建議加入）
-- [ ] **HTTP Security Headers**：在 `next.config.js` 的 `headers()` 加入以下回應標頭：
-  - `X-Frame-Options: DENY`（防 Clickjacking）
-  - `X-Content-Type-Options: nosniff`（防 MIME sniffing）
-  - `Referrer-Policy: strict-origin-when-cross-origin`
-  - `Content-Security-Policy`：至少設定 `default-src 'self'`，允許 Recharts inline style
-- [ ] **SESSION_SECRET 強度驗證**：啟動時（`src/lib/session.ts`）確認 `SESSION_SECRET` 長度 ≥ 32 字元，否則拋出明確錯誤
+- [x] **HTTP Security Headers**：X-Frame-Options、X-Content-Type-Options、Referrer-Policy、CSP 已加入 `next.config.js`
+- [x] **SESSION_SECRET 強度驗證**：`session.ts` 啟動時驗證長度 ≥ 32 字元
 - [ ] **Audit Log 補齊敏感操作**：目前 AuditLog 只記錄匯入/AI 重分類，加入：登入成功/失敗、交易刪除、資料備份下載
 
 #### 低風險確認
 - [ ] **Webhook 簽名驗證**：確認 `verifySignature` 失敗時立即 return 200（LINE 要求），目前看起來正確但加入單元測試驗證
-- [ ] **錯誤訊息稽核**：全面搜尋 API catch block 中的 `e.message` 是否回傳給 client，改為統一回傳 `"操作失敗"` 並 `console.error` 詳細訊息
+- [x] **錯誤訊息稽核**：`/api/import`、`/api/import-pdf` catch block 改為回傳固定提示，不再洩漏 `e.message`
 
 ---
 
