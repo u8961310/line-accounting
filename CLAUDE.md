@@ -280,7 +280,7 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 #### 縱深防禦（建議加入）
 - [x] **HTTP Security Headers**：X-Frame-Options、X-Content-Type-Options、Referrer-Policy、CSP 已加入 `next.config.js`
 - [x] **SESSION_SECRET 強度驗證**：`session.ts` 啟動時驗證長度 ≥ 32 字元
-- [ ] **Audit Log 補齊敏感操作**：目前 AuditLog 只記錄匯入/AI 重分類，加入：登入成功/失敗、交易刪除、資料備份下載
+- [x] **Audit Log 補齊敏感操作**：新增 login / transaction_delete / data_export，記錄登入成敗、交易刪除快照、JSON/CSV/XLSX 匯出
 
 #### 低風險確認
 - [ ] **Webhook 簽名驗證**：確認 `verifySignature` 失敗時立即 return 200（LINE 要求），目前看起來正確但加入單元測試驗證
