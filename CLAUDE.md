@@ -317,7 +317,7 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] **信用卡頁面顯示訂閱負擔**：LoanManager 信用卡列表旁顯示「綁定 X 項訂閱・月費 NT$Y」（比對付款方式欄位）
 - [x] **分類標籤圓餅圖**：訂閱頁加「by 標籤」分組視圖，顯示各類別月費佔比
 - ~~**年繳省錢試算**：月繳項目旁顯示「改年繳每年可省 NT$X」提示~~ → 不需要
-- [ ] **LINE 推播**：年繳訂閱到期前 N 天自動推播提醒（由 kogao 負責呼叫）
+- [x] **LINE 推播**：年繳訂閱到期已由 kogao bill-reminder 推播（subscription type 通知）
 - [x] **訂閱 vs 交易比對**：新增 `/api/subscriptions/verify`，比對本月交易與 Notion 訂閱清單（模糊比對名稱），顯示「已扣款 / 未找到交易」狀態於訂閱管理頁下方
 - ~~**外幣訂閱換算顯示**：Notion DB 加 `原幣金額` + `幣別` 欄位，非 TWD 時顯示「USD 9.99 ≈ NT$ 320」，匯率可 hardcode 或串公開 API~~ → 不需要
 - ~~**信用卡回饋試算**：訂閱管理頁新增回饋試算區塊，依付款方式分組月費 × 可設定回饋率，顯示每月可賺回饋金額，設定值存 localStorage~~ → 不需要
@@ -351,7 +351,7 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] Tab 記憶：重新整理後回到上次所在的 Tab（localStorage 存 activeTab）
 - [x] 通知鈴鐺紅點：在鈴鐺上直接顯示未讀通知數量 badge
 - [x] Header 單行化：Logo 與 Tab nav 合併同一行，減少垂直空間佔用
-- [ ] 通知中心優先排序：`NotificationPanel` 確保 danger → warn → info 順序（`/api/notifications` 已排序，確認前端未打亂）
+- [x] 通知中心優先排序：前端直接用 API 回傳陣列，未打亂順序
 
 #### 圖表 tab
 - [x] 月份對比卡可展開：點擊展開看全分類對比 Bar Chart
@@ -367,7 +367,7 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] 無限滾動：滾到底部自動載入下一頁，取代分頁按鈕
 - [x] 空狀態改善：搜尋無結果時顯示「清除篩選」按鈕（有篩選條件時顯示 🔍 找不到符合條件＋清除篩選按鈕；真的無資料才顯示原始引導畫面）
 - [x] 行內金額編輯：點擊金額直接 inline 編輯，不用開 modal（點擊金額變 input，Enter/blur 儲存，Escape 取消，同步更新 PATCH API 支援 amount 欄位）
-- [ ] 金額範圍篩選：進階篩選加入「金額 ≥ / ≤」欄位，`/api/transactions` 已有 `amountMin`/`amountMax` 參數，只需補前端 UI
+- [x] 金額範圍篩選：進階篩選已有金額最小/最大欄位（早已實作）
 - [x] 批量刪除交易：批次模式工具列新增「🗑 刪除 N 筆」按鈕，confirm 二次確認後呼叫 /api/transactions/batch-delete
 
 #### 效能
@@ -384,10 +384,10 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] `add_transaction`：新增記帳（type/amount/category/note/date），source 標記為 "mcp"
 - [x] `update_transaction`：修改指定交易的分類/備註/金額/類型
 - [x] `delete_transaction`：刪除前查詢快照確認，寫入 audit log
-- [ ] `add_budget` / `update_budget`：設定或調整預算分類金額（🟡）
-- [ ] `add_loan_payment`：記錄還款，呼叫 `POST /api/loans/:id/payments`（🟡）
-- [ ] `get_subscriptions`：回傳完整訂閱明細列表（現有工具只有摘要）（🟡）
-- [ ] `get_anomaly_detection`：包裝現有 `/api/anomaly-detection` 端點（🟡）
+- [x] `set_budget`：upsert 分類預算（category/amount/carryoverPct）
+- [x] `add_loan_payment`：記錄還款，自動更新剩餘本金與狀態
+- [x] `get_subscriptions`：回傳完整訂閱明細（含 fee/cycle/nextBillingDate/tags）
+- [x] `get_anomaly_detection`：z-score 異常偵測，支援 month/lookback 參數
 
 ### AI 洞察（🔴 高）
 - [x] AI 月度洞察報告：每月底用 Claude API 分析當月交易，自動生成個人化建議（支出異常、預算執行、目標進度、研究所儲蓄缺口），結果顯示在 Dashboard 並可 LINE 推播
