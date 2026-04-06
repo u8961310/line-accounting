@@ -368,7 +368,7 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] 空狀態改善：搜尋無結果時顯示「清除篩選」按鈕（有篩選條件時顯示 🔍 找不到符合條件＋清除篩選按鈕；真的無資料才顯示原始引導畫面）
 - [x] 行內金額編輯：點擊金額直接 inline 編輯，不用開 modal（點擊金額變 input，Enter/blur 儲存，Escape 取消，同步更新 PATCH API 支援 amount 欄位）
 - [ ] 金額範圍篩選：進階篩選加入「金額 ≥ / ≤」欄位，`/api/transactions` 已有 `amountMin`/`amountMax` 參數，只需補前端 UI
-- [ ] 批量刪除交易：交易列表支援多選（checkbox），多選後出現「🗑 刪除選中」，確認後呼叫批次 DELETE API
+- [x] 批量刪除交易：批次模式工具列新增「🗑 刪除 N 筆」按鈕，confirm 二次確認後呼叫 /api/transactions/batch-delete
 
 #### 效能
 - [x] Tab 資料快取：切回之前看過的 Tab 時不重新 fetch（useRef 快取）
@@ -381,9 +381,9 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 > 已移至 kogao 專案（`d:\code\kogao\CLAUDE.md`）管理
 
 ### MCP 工具擴充（🔴 高）
-- [ ] `add_transaction`：在 `createMcpServer.ts` 新增寫入工具，讓 Claude Code 直接說「記帳早餐 80」，呼叫 `POST /api/transactions`
-- [ ] `update_transaction`：修改指定交易的分類/備註/金額，呼叫 `PATCH /api/transactions/:id`
-- [ ] `delete_transaction`：刪除指定交易，呼叫 `DELETE /api/transactions/:id`
+- [x] `add_transaction`：新增記帳（type/amount/category/note/date），source 標記為 "mcp"
+- [x] `update_transaction`：修改指定交易的分類/備註/金額/類型
+- [x] `delete_transaction`：刪除前查詢快照確認，寫入 audit log
 - [ ] `add_budget` / `update_budget`：設定或調整預算分類金額（🟡）
 - [ ] `add_loan_payment`：記錄還款，呼叫 `POST /api/loans/:id/payments`（🟡）
 - [ ] `get_subscriptions`：回傳完整訂閱明細列表（現有工具只有摘要）（🟡）
