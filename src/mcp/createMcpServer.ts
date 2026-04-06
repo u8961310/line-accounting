@@ -1784,7 +1784,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
     // ── get_subscriptions ────────────────────────────────────────────────────
     if (name === "get_subscriptions") {
-      const { getSubscriptionsFromNotion } = await import("../lib/notion.js");
+      // webpackIgnore: prevents webpack from bundling this Node.js-only module at build time
+      const { getSubscriptionsFromNotion } = await import(/* webpackIgnore: true */ "../lib/notion");
       const items = await getSubscriptionsFromNotion();
       const monthlyTotal = items.reduce((s, i) => s + i.monthlyAmount, 0);
       return {
