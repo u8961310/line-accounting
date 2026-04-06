@@ -4515,17 +4515,17 @@ export default function DashboardPage() {
                               ]);
                             }}
                             title="分割此筆"
-                            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all opacity-0 group-hover:opacity-100 hover:bg-blue-500/10 text-[13px]"
+                            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all opacity-30 group-hover:opacity-100 hover:bg-blue-500/10 text-[13px]"
                             style={{ color: "#60A5FA" }}>
                             ⑂
                           </button>
-                          {/* Delete — hover only */}
+                          {/* Delete */}
                           <button
                             onClick={() => deleteTx(tx.id)}
                             title="刪除此筆"
-                            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all opacity-0 group-hover:opacity-100 hover:bg-red-500/10"
+                            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all opacity-30 group-hover:opacity-100 hover:bg-red-500/10"
                             style={{ color: "#F87171" }}>
-                            ✕
+                            🗑
                           </button>
                         </div>
                       );
