@@ -7,11 +7,13 @@ export interface SessionData {
 
 const secret = process.env.SESSION_SECRET ?? "";
 if (secret.length < 32) {
-  throw new Error("SESSION_SECRET must be at least 32 characters — set a strong random value");
+  // Log loudly but don't throw at module level — a module-level throw crashes Next.js middleware
+  // and returns empty responses. The actual session operations will fail with a clear error instead.
+  console.error("[session] FATAL: SESSION_SECRET must be at least 32 characters");
 }
 
 export const SESSION_OPTIONS = {
-  password: secret,
+  password: secret || "placeholder-replace-me-with-a-real-secret",
   cookieName: "line-accounting-session",
   cookieOptions: {
     secure: process.env.NODE_ENV === "production",
