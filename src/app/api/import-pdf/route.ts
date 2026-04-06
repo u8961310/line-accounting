@@ -235,6 +235,6 @@ export async function POST(req: NextRequest) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[import-pdf]", e);
     void logAudit({ action: "pdf_import", status: "error", errorMsg: msg });
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: "PDF 匯入失敗，請確認檔案格式" }, { status: 500 });
   }
 }

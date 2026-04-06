@@ -7,32 +7,28 @@ export const dynamic = "force-dynamic";
 
 const XLS_EXTENSIONS = [".xls", ".xlsx"];
 
+// Always use the dashboard user — never trust a client-supplied lineUserId
+async function getDashboardUser() {
+  return prisma.user.upsert({
+    where: { lineUserId: "dashboard_user" },
+    update: {},
+    create: { lineUserId: "dashboard_user", displayName: "Dashboard" },
+  });
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const formData = await request.formData();
     const file = formData.get("file");
-    const lineUserId = formData.get("lineUserId");
 
     if (!file || !(file instanceof File)) {
       return NextResponse.json({ error: "請上傳 CSV / XLS / XLSX 檔案" }, { status: 400 });
     }
 
-    if (!lineUserId || typeof lineUserId !== "string") {
-      return NextResponse.json({ error: "請提供使用者 ID" }, { status: 400 });
-    }
-
     const fileName = file.name.toLowerCase();
     const isXls = XLS_EXTENSIONS.some((ext) => fileName.endsWith(ext));
 
-    // Ensure user exists
-    const user = await prisma.user.upsert({
-      where: { lineUserId },
-      update: {},
-      create: {
-        lineUserId,
-        displayName: lineUserId,
-      },
-    });
+    const user = await getDashboardUser();
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -61,6 +57,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.error("Import error:", error);
     const message = error instanceof Error ? error.message : "匯入失敗";
     void logAudit({ action: "csv_import", status: "error", errorMsg: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "匯入失敗，請確認檔案格式" }, { status: 500 });
   }
 }

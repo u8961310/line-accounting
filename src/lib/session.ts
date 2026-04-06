@@ -5,8 +5,13 @@ export interface SessionData {
   isLoggedIn: boolean;
 }
 
+const secret = process.env.SESSION_SECRET ?? "";
+if (secret.length < 32) {
+  throw new Error("SESSION_SECRET must be at least 32 characters — set a strong random value");
+}
+
 export const SESSION_OPTIONS = {
-  password: process.env.SESSION_SECRET!,
+  password: secret,
   cookieName: "line-accounting-session",
   cookieOptions: {
     secure: process.env.NODE_ENV === "production",
