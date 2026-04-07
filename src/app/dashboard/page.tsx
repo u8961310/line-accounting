@@ -34,6 +34,7 @@ import { THEMES, themeToCSS, type AppTheme } from "@/lib/themes";
 import { getDailyQuote, getRandomQuote, type FinancialQuote } from "@/lib/quotes";
 import type { DuplicatePair } from "@/app/api/duplicate-candidates/route";
 import type { HealthSnapshot } from "@/app/api/health-score/snapshots/route";
+import { useFinanceChanged, notifyFinanceChanged } from "@/lib/finance-events";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface MonthlySummary { month: string; income: number; expense: number }
@@ -518,16 +519,20 @@ export default function DashboardPage() {
   const [txPage,     setTxPage]     = useState(1);
   const [txLoading,  setTxLoading]  = useState(false);
   const txSentinelRef = useRef<HTMLDivElement>(null);
+  const tabNavRef     = useRef<HTMLDivElement>(null);
   const [editingTxId,  setEditingTxId]  = useState<string | null>(null);
-  const [txFilterCat,    setTxFilterCat]    = useState<string | null>(null);
-  const [txSearch,       setTxSearch]       = useState("");
+  // 從 URL 讀取初始篩選狀態（支援分享連結）
+  const _initTxParams = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const [txFilterCat,    setTxFilterCat]    = useState<string | null>(_initTxParams.get("cat") ?? null);
+  const [txSearch,       setTxSearch]       = useState(_initTxParams.get("q") ?? "");
   const [txAdvancedOpen, setTxAdvancedOpen] = useState(false);
-  const [txDateFrom,     setTxDateFrom]     = useState("");
-  const [txDateTo,       setTxDateTo]       = useState("");
-  const [txAmountMin,    setTxAmountMin]    = useState("");
-  const [txAmountMax,    setTxAmountMax]    = useState("");
-  const [txTypeFilter,   setTxTypeFilter]   = useState<"" | "收入" | "支出">("");
-  const [txSourceFilter, setTxSourceFilter] = useState<string[]>([]);
+  const [txDateFrom,     setTxDateFrom]     = useState(_initTxParams.get("from") ?? "");
+  const [txDateTo,       setTxDateTo]       = useState(_initTxParams.get("to") ?? "");
+  const [txAmountMin,    setTxAmountMin]    = useState(_initTxParams.get("amtMin") ?? "");
+  const [txAmountMax,    setTxAmountMax]    = useState(_initTxParams.get("amtMax") ?? "");
+  const [txTypeFilter,   setTxTypeFilter]   = useState<"" | "收入" | "支出">((_initTxParams.get("type") ?? "") as "" | "收入" | "支出");
+  const [txSourceFilter, setTxSourceFilter] = useState<string[]>(_initTxParams.get("source") ? _initTxParams.get("source")!.split(",") : []);
   const [txMoodFilter,      setTxMoodFilter]      = useState<string>("");
   const [moodPickerId,      setMoodPickerId]      = useState<string | null>(null);
   const [editingAmountId,   setEditingAmountId]   = useState<string | null>(null);
@@ -768,6 +773,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useFinanceChanged(fetchData);
 
   // 動態 title — 顯示當前月份
   useEffect(() => {
@@ -785,6 +791,20 @@ export default function DashboardPage() {
   // Tab 記憶 — 持久化 activeTab
   useEffect(() => {
     localStorage.setItem("activeTab", activeTab);
+  }, [activeTab]);
+
+  // 手機 Tab nav 水平捲動：切換 Tab 時將 active button 捲入視野
+  useEffect(() => {
+    if (!tabNavRef.current) return;
+    const nav = tabNavRef.current;
+    const btn = nav.querySelector<HTMLButtonElement>(`[data-tab="${activeTab}"]`);
+    if (!btn) return;
+    // 僅水平平滑捲動，不影響垂直捲動
+    const btnLeft  = btn.offsetLeft;
+    const btnWidth = btn.offsetWidth;
+    const navWidth = nav.offsetWidth;
+    const scrollTarget = btnLeft - navWidth / 2 + btnWidth / 2;
+    nav.scrollTo({ left: scrollTarget, behavior: "smooth" });
   }, [activeTab]);
 
   // 圖表 Tab 卡片懶載入：切到 charts tab 時先渲染前 4 張，150ms 後渲染其餘
@@ -860,6 +880,23 @@ export default function DashboardPage() {
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [txTypeFilter, txDateFrom, txDateTo, txAmountMin, txAmountMax, txSourceFilter]);
+
+  // 同步交易篩選條件到 URL（支援分享連結）
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const set = (k: string, v: string | null) => { if (v) p.set(k, v); else p.delete(k); };
+    set("cat",    txFilterCat);
+    set("q",      txSearch || null);
+    set("from",   txDateFrom || null);
+    set("to",     txDateTo   || null);
+    set("amtMin", txAmountMin || null);
+    set("amtMax", txAmountMax || null);
+    set("type",   txTypeFilter || null);
+    set("source", txSourceFilter.length > 0 ? txSourceFilter.join(",") : null);
+    const qs = p.toString();
+    const newUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    window.history.replaceState(null, "", newUrl);
+  }, [txFilterCat, txSearch, txDateFrom, txDateTo, txAmountMin, txAmountMax, txTypeFilter, txSourceFilter]);
 
   // Load saved theme
   useEffect(() => {
@@ -1175,6 +1212,7 @@ export default function DashboardPage() {
       const updated = await fetch("/api/goals").then(r => r.json()) as GoalItem[];
       setGoals(updated);
       setGoalModal(null);
+      notifyFinanceChanged();
     } catch (e) { console.error(e); }
     finally { setGoalSaving(false); }
   }
@@ -1182,6 +1220,7 @@ export default function DashboardPage() {
   async function deleteGoal(id: string) {
     await fetch(`/api/goals/${id}`, { method: "DELETE" });
     setGoals(g => g.filter(x => x.id !== id));
+    notifyFinanceChanged();
   }
 
   async function fetchCompare(mA: string, mB: string) {
@@ -1371,6 +1410,9 @@ export default function DashboardPage() {
       } : prev);
       setSelectedIds(new Set());
       setBatchMode(false);
+      // 清除 Tab 快取，下次切回時重新載入
+      loadedTabs.current.delete("transactions");
+      fetchData();
     } catch (e) { console.error(e); }
     setBatchDeleting(false);
   }
@@ -1487,9 +1529,9 @@ export default function DashboardPage() {
           {/* Tab nav — 主 Tab 可橫向捲動，下拉選單在外側避免被裁切 */}
           <div className="flex items-stretch flex-1 min-w-0">
             {/* 主 Tab（可捲動） */}
-            <div className="flex items-stretch overflow-x-auto no-scrollbar flex-1 min-w-0">
+            <div ref={tabNavRef} className="flex items-stretch overflow-x-auto no-scrollbar flex-1 min-w-0">
               {TABS.map(tab => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                <button key={tab.id} data-tab={tab.id} onClick={() => setActiveTab(tab.id)}
                   className="relative px-3 text-[13px] font-semibold tracking-wide transition-colors duration-200 whitespace-nowrap flex items-center gap-1"
                   style={{ color: activeTab === tab.id ? "var(--accent-light)" : "var(--text-sub)" }}>
                   {tab.label}
@@ -2635,6 +2677,7 @@ export default function DashboardPage() {
                             }),
                           });
                           await fetchData();
+                          notifyFinanceChanged();
                           setBankEditSaving(false);
                           setBankEditSource(null);
                         }}
@@ -4766,10 +4809,19 @@ export default function DashboardPage() {
         {activeTab === "import" && (
           <div className="space-y-6">
             {/* ── JSON 備份還原 ── */}
-            <JsonRestorePanel onComplete={fetchData} />
+            <JsonRestorePanel onComplete={() => {
+              fetchData();
+              loadedTabs.current.delete("transactions");
+              setTxData(null);
+              setTxPage(1);
+            }} />
 
             <CsvImport lineUserId={lineUserId} onImportComplete={() => {
               fetchData();
+              // 清除交易記錄快取，下次切回 Tab 時重新載入
+              loadedTabs.current.delete("transactions");
+              setTxData(null);
+              setTxPage(1);
               // refresh duplicate list after import
               if (isDemo.current) return;
               fetch("/api/duplicate-candidates")
@@ -5093,7 +5145,7 @@ export default function DashboardPage() {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
           style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
           onClick={e => { if (e.target === e.currentTarget) setAddModal(false); }}>
-          <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 space-y-4"
+          <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto"
             style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 24px 60px rgba(0,0,0,0.4)" }}>
             <div className="flex items-center justify-between">
               <h3 className="text-[16px] font-bold" style={{ color: "var(--text-primary)" }}>新增記帳</h3>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { DEMO_FIXED_EXPENSES, DEMO_LOANS_RAW } from "@/lib/demo-data";
+import { notifyFinanceChanged } from "@/lib/finance-events";
 
 interface FixedExpenseItem {
   id:         string;
@@ -159,6 +160,7 @@ export default function FixedExpenseManager({ isDemo = false, monthlyIncome = 0 
       }
       cancelForm();
       fetchAll();
+      notifyFinanceChanged();
     } catch (e) { console.error(e); }
     finally { setSaving(false); }
   }
@@ -169,6 +171,7 @@ export default function FixedExpenseManager({ isDemo = false, monthlyIncome = 0 
     try {
       await fetch(`/api/fixed-expenses/${id}`, { method: "DELETE" });
       fetchAll();
+      notifyFinanceChanged();
     } catch (e) { console.error(e); }
     finally { setDeletingId(null); }
   }

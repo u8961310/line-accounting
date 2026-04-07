@@ -204,8 +204,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const body      = await request.text();
     const signature = request.headers.get("x-line-signature") ?? "";
 
+    // LINE 規格要求：驗簽失敗仍須回 200，否則 LINE 平台會重試
     if (!verifySignature(body, signature)) {
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+      return NextResponse.json({ status: "ok" });
     }
 
     const webhookBody = JSON.parse(body) as LineWebhookBody;

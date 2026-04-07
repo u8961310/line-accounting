@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { notifyFinanceChanged } from "@/lib/finance-events";
 
 interface BudgetItem {
   id:              string;
@@ -542,6 +543,7 @@ export default function BudgetManager({ extraCategories = [] }: { extraCategorie
     }
     setApplying(false);
     fetchBudgets(month);
+    notifyFinanceChanged();
   }
 
   async function handleSave(category: string, amount: number, carryoverPct?: number) {
@@ -551,11 +553,13 @@ export default function BudgetManager({ extraCategories = [] }: { extraCategorie
       body: JSON.stringify({ category, amount, carryoverPct: carryoverPct ?? 0 }),
     });
     fetchBudgets(month);
+    notifyFinanceChanged();
   }
 
   async function handleDelete(category: string) {
     await fetch(`/api/budgets?category=${encodeURIComponent(category)}`, { method: "DELETE" });
     fetchBudgets(month);
+    notifyFinanceChanged();
   }
 
   async function handleQuickSave() {

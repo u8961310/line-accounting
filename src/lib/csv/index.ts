@@ -103,9 +103,14 @@ async function saveTransactions(
         existing = await prisma.transaction.findFirst({
           where: { userId, date: dateOnly, amount: tx.amount, source: tx.source, note: tx.note },
         });
+      } else if (tx.source === "mega_bank") {
+        // 兆豐銀行：次日帳可能同日同金額但不同備註（不同受款方）
+        existing = await prisma.transaction.findFirst({
+          where: { userId, date: dateOnly, amount: tx.amount, source: tx.source, type: tx.type, note: tx.note },
+        });
       } else {
         existing = await prisma.transaction.findFirst({
-          where: { userId, date: dateOnly, amount: tx.amount, source: tx.source },
+          where: { userId, date: dateOnly, amount: tx.amount, source: tx.source, type: tx.type },
         });
       }
 

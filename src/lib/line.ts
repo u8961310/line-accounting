@@ -10,7 +10,15 @@ export function verifySignature(body: string, signature: string): boolean {
   const channelSecret = process.env.LINE_CHANNEL_SECRET;
   const hmac = crypto.createHmac("sha256", channelSecret!);
   const digest = hmac.update(body).digest("base64");
-  return digest === signature;
+  // timingSafeEqual 防時序攻擊；長度不同時直接回 false
+  try {
+    const a = Buffer.from(digest);
+    const b = Buffer.from(signature);
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
 }
 
 export async function replyMessage(replyToken: string, text: string): Promise<void> {

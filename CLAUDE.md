@@ -283,7 +283,7 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] **Audit Log 補齊敏感操作**：新增 login / transaction_delete / data_export，記錄登入成敗、交易刪除快照、JSON/CSV/XLSX 匯出
 
 #### 低風險確認
-- [ ] **Webhook 簽名驗證**：確認 `verifySignature` 失敗時立即 return 200（LINE 要求），目前看起來正確但加入單元測試驗證
+- [x] **Webhook 簽名驗證**：確認 `verifySignature` 失敗時立即 return 200（LINE 要求），目前看起來正確但加入單元測試驗證
 - [x] **錯誤訊息稽核**：`/api/import`、`/api/import-pdf` catch block 改為回傳固定提示，不再洩漏 `e.message`
 
 ---
@@ -374,8 +374,8 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] Tab 資料快取：切回之前看過的 Tab 時不重新 fetch（useRef 快取）
 
 #### 手機 / 響應式
-- [ ] Tab nav 水平捲動：手機上 Tab 超出螢幕時可左右滑動
-- [ ] Modal 全螢幕：手機上新增記帳 modal 改為 bottom sheet 全螢幕
+- [x] Tab nav 水平捲動：手機上 Tab 超出螢幕時可左右滑動
+- [x] Modal 全螢幕：手機上新增記帳 modal 改為 bottom sheet 全螢幕
 
 ### 通知與推播
 > 已移至 kogao 專案（`d:\code\kogao\CLAUDE.md`）管理

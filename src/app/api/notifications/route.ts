@@ -66,7 +66,7 @@ export async function GET(): Promise<NextResponse> {
         title:    `${budget.category} 已超出預算`,
         body:     `本月已花 NT$ ${Math.round(spent).toLocaleString("zh-TW")}，超出預算 NT$ ${Math.round(spent - budgetAmt).toLocaleString("zh-TW")}`,
       });
-    } else if (pct >= 80) {
+    } else if (pct >= 80 && pct < 100) {
       notes.push({
         id:       `budget-warn-${budget.category}`,
         type:     "budget",

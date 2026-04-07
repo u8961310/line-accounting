@@ -12,7 +12,7 @@ const securityHeaders = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",  // needed by Next.js
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob:",
+      "img-src 'self' data: blob: https://quickchart.io",
       "font-src 'self'",
       "connect-src 'self'",
       "frame-ancestors 'none'",

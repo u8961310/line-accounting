@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { DEMO_LOANS_RAW, DEMO_CREDIT_CARDS_RAW } from "@/lib/demo-data";
+import { notifyFinanceChanged } from "@/lib/finance-events";
 
 interface LoanPayment {
   id: string;
@@ -198,6 +199,10 @@ export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
   const [selectedLoan, setSelectedLoan] = useState<LoanItem | null>(null);
   const [selectedLoanPayments, setSelectedLoanPayments] = useState<LoanPayment[]>([]);
   const [expandedLoanId, setExpandedLoanId] = useState<string | null>(null);
+  const [topupLoan, setTopupLoan] = useState<LoanItem | null>(null);
+  const [topupForm, setTopupForm] = useState({
+    additionalPrincipal: "", interestRate: "", endDate: "", note: "",
+  });
 
   const [selectedCardForBill, setSelectedCardForBill] = useState<CreditCardItem | null>(null);
   const [selectedBillForPayment, setSelectedBillForPayment] = useState<{ cardId: string; bill: CreditCardBillItem } | null>(null);
@@ -334,7 +339,7 @@ export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
       });
       setShowAddLoan(false);
       setLoanForm({ name: "", lender: "", type: "個人信貸", originalPrincipal: "", remainingPrincipal: "", interestRate: "", paymentDay: "", endDate: "", note: "" });
-      await fetchData();
+      await fetchData(); notifyFinanceChanged();
     } catch (e) {
       console.error(e);
     }
@@ -356,7 +361,29 @@ export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
         }),
       });
       setSelectedLoan(null);
-      await fetchData();
+      await fetchData(); notifyFinanceChanged();
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function handleTopup() {
+    if (!topupLoan || !topupForm.additionalPrincipal) return;
+    try {
+      const body: Record<string, unknown> = {
+        additionalPrincipal: parseFloat(topupForm.additionalPrincipal),
+        note: topupForm.note,
+      };
+      if (topupForm.interestRate) body.interestRate = parseFloat(topupForm.interestRate);
+      if (topupForm.endDate)      body.endDate = topupForm.endDate;
+      await fetch(`/api/loans/${topupLoan.id}/topup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      setTopupLoan(null);
+      setTopupForm({ additionalPrincipal: "", interestRate: "", endDate: "", note: "" });
+      await fetchData(); notifyFinanceChanged();
     } catch (e) {
       console.error(e);
     }
@@ -366,7 +393,7 @@ export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
     if (!confirm("確定要刪除這筆貸款？")) return;
     try {
       await fetch(`/api/loans/${id}`, { method: "DELETE" });
-      await fetchData();
+      await fetchData(); notifyFinanceChanged();
     } catch (e) {
       console.error(e);
     }
@@ -388,7 +415,7 @@ export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
       });
       setShowAddCard(false);
       setCardForm({ name: "永豐信用卡", bank: "永豐銀行", creditLimit: "", statementDay: "", dueDay: "" });
-      await fetchData();
+      await fetchData(); notifyFinanceChanged();
     } catch (e) {
       console.error(e);
     }
@@ -411,7 +438,7 @@ export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
       });
       setSelectedCardForBill(null);
       setBillForm({ billingMonth: "", totalAmount: "", minimumPayment: "", dueDate: "", paidAmount: "0", paidDate: "" });
-      await fetchData();
+      await fetchData(); notifyFinanceChanged();
     } catch (e) {
       console.error(e);
     }
@@ -430,7 +457,7 @@ export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
       });
       setSelectedBillForPayment(null);
       setBillPayForm({ paidAmount: "", paidDate: new Date().toISOString().split("T")[0] });
-      await fetchData();
+      await fetchData(); notifyFinanceChanged();
     } catch (e) {
       console.error(e);
     }
@@ -687,6 +714,11 @@ export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
                         className="px-4 py-2 rounded-lg text-[14px] font-semibold text-white transition-opacity hover:opacity-80"
                         style={{ background: "var(--btn-gradient)", boxShadow: "0 0 10px rgba(59,130,246,0.25)" }}>
                         💳 記錄還款
+                      </button>
+                      <button onClick={() => { setTopupLoan(loan); setTopupForm({ additionalPrincipal: "", interestRate: String(loan.interestRate), endDate: loan.endDate ? loan.endDate.slice(0, 10) : "", note: "" }); }}
+                        className="px-3 py-2 rounded-lg text-[14px] font-semibold transition-opacity hover:opacity-80"
+                        style={{ background: "rgba(234,179,8,0.12)", color: "#CA8A04", border: "1px solid rgba(234,179,8,0.3)" }}>
+                        ＋ 增貸
                       </button>
                       <div className="flex-1" />
                       <button onClick={() => toggleLoanHistory(loan.id)}
@@ -963,6 +995,45 @@ export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
             </div>
           </div>
           <ModalFooter onCancel={() => setSelectedLoan(null)} onConfirm={handleRecordPayment} confirmLabel="確認還款" />
+        </Modal>
+      )}
+
+      {topupLoan && (
+        <Modal onClose={() => setTopupLoan(null)}>
+          <ModalHeader title="增貸" sub={topupLoan.name} onClose={() => setTopupLoan(null)} />
+          <div className="px-6 py-5 space-y-4">
+            <div className="rounded-xl px-4 py-3" style={{ background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.25)" }}>
+              <p className="text-[13px]" style={{ color: "#CA8A04" }}>
+                目前剩餘本金：<span className="font-bold">NT$ {fmt(topupLoan.remainingPrincipal)}</span>
+                　｜　原始本金：NT$ {fmt(topupLoan.originalPrincipal)}
+              </p>
+            </div>
+            <div>
+              <label className={labelClass}>增貸金額 *</label>
+              <input className={inputClass} type="number" min="1" step="1" placeholder="例：200000"
+                onWheel={e => e.currentTarget.blur()}
+                value={topupForm.additionalPrincipal}
+                onChange={e => setTopupForm(f => ({ ...f, additionalPrincipal: e.target.value }))} />
+            </div>
+            <div>
+              <label className={labelClass}>新年利率 % <span className="text-slate-600">（不填則保留現有 {topupLoan.interestRate}%）</span></label>
+              <input className={inputClass} type="number" step="0.01" min="0"
+                onWheel={e => e.currentTarget.blur()}
+                value={topupForm.interestRate}
+                onChange={e => setTopupForm(f => ({ ...f, interestRate: e.target.value }))} />
+            </div>
+            <div>
+              <label className={labelClass}>新到期日 <span className="text-slate-600">（選填）</span></label>
+              <input className={inputClass} type="date" value={topupForm.endDate}
+                onChange={e => setTopupForm(f => ({ ...f, endDate: e.target.value }))} />
+            </div>
+            <div>
+              <label className={labelClass}>備註</label>
+              <input className={inputClass} placeholder="例：增貸 20 萬，用途：裝修" value={topupForm.note}
+                onChange={e => setTopupForm(f => ({ ...f, note: e.target.value }))} />
+            </div>
+          </div>
+          <ModalFooter onCancel={() => setTopupLoan(null)} onConfirm={handleTopup} confirmLabel="確認增貸" />
         </Modal>
       )}
 

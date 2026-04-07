@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useFinanceChanged } from "@/lib/finance-events";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -13,7 +14,13 @@ interface LoanItem {
   payments: { principalPaid: string; interestPaid: string }[];
 }
 interface FixedExpenseItem { amount: number }
-interface BudgetItem { amount: number }
+interface BudgetDetailItem { category: string; amount: number; effectiveAmount: number; spent: number }
+
+const SOURCE_LABEL: Record<string, string> = {
+  mega_bank: "兆豐銀行", esun_bank: "玉山銀行", cathay_bank: "國泰世華",
+  ctbc_bank: "中信銀行", tbank: "台灣銀行", kgi_bank: "凱基銀行",
+  sinopac_bank: "永豐銀行", yuanta_bank: "元大銀行", manual: "手動",
+};
 
 // ── Storage keys ──────────────────────────────────────────────────────────
 
@@ -43,42 +50,50 @@ function fmt(n: number) {
   return Math.abs(Math.round(n)).toLocaleString("zh-TW");
 }
 
+/** 與 EducationProgramPlanner 相同算法：以實際月份差計算（可為負，表示已逾期） */
 function getMonthsUntil(year: number, month: number): number {
   const now = new Date();
-  return Math.max(0, (year - now.getFullYear()) * 12 + (month - 1 - now.getMonth()));
+  const diff = (year - now.getFullYear()) * 12 + (month - 1 - now.getMonth());
+  return Math.max(0, diff); // 研究所/目標倒數不顯示負數，已過期就顯示 0
+}
+
+/** 與 EducationProgramPlanner.buildPaymentSchedule 相同的邏輯，避免跨年計算偏差 */
+function buildEduSchedule(edu: EduPlan): { label: string; amount: number; monthsAway: number; isPaid: boolean }[] {
+  const startYear  = edu.startYear  ?? new Date().getFullYear();
+  const startMonth = edu.startMonth ?? 8;
+  const total      = edu.totalPayments ?? 4;
+  const paid       = edu.paidCount ?? 0;
+  const now        = new Date();
+  const cursor     = new Date(startYear, startMonth - 1, 1);
+  const events: { label: string; amount: number; monthsAway: number; isPaid: boolean }[] = [];
+  for (let i = 0; i < total; i++) {
+    const month      = cursor.getMonth() + 1;
+    const y          = cursor.getFullYear();
+    const amount     = month === 8 ? (edu.augustAmount ?? 45000) : (edu.februaryAmount ?? 45000);
+    // 與 EducationProgramPlanner 相同：cursor.getMonth() - now.getMonth()（含跨年）
+    const monthsAway = Math.round((y - now.getFullYear()) * 12 + (cursor.getMonth() - now.getMonth()));
+    events.push({ label: `${y} 年 ${month} 月`, amount, monthsAway, isPaid: i < paid });
+    cursor.setMonth(cursor.getMonth() + 6);
+  }
+  return events;
 }
 
 function getNextEduPayment(edu: EduPlan): { label: string; amount: number; monthsAway: number } | null {
-  const startYear = edu.startYear ?? new Date().getFullYear();
-  const startMonth = edu.startMonth ?? 8;
-  const total = edu.totalPayments ?? 4;
-  const paid  = edu.paidCount ?? 0;
-  if (paid >= total) return null;
-  const cursor = new Date(startYear, startMonth - 1, 1);
-  for (let i = 0; i < total; i++) {
-    const month = cursor.getMonth() + 1;
-    const y = cursor.getFullYear();
-    const monthsAway = getMonthsUntil(y, month);
-    const amount = month === 8 ? (edu.augustAmount ?? 45000) : (edu.februaryAmount ?? 45000);
-    if (i >= paid && monthsAway >= 0) return { label: `${y} 年 ${month} 月`, amount, monthsAway };
-    cursor.setMonth(cursor.getMonth() + 6);
+  const schedule = buildEduSchedule(edu);
+  // 找第一筆未繳且未逾期（monthsAway >= 0）的款項
+  const next = schedule.find(p => !p.isPaid && p.monthsAway >= 0);
+  // 若全數逾期但仍有未繳，取最近逾期那筆（monthsAway 最大）
+  if (!next) {
+    const overdue = schedule.filter(p => !p.isPaid).sort((a, b) => b.monthsAway - a.monthsAway)[0];
+    return overdue ?? null;
   }
-  return null;
+  return next;
 }
 
 function getEduTotalRemaining(edu: EduPlan): number {
-  const startYear = edu.startYear ?? new Date().getFullYear();
-  const startMonth = edu.startMonth ?? 8;
-  const total = edu.totalPayments ?? 4;
-  const paid  = edu.paidCount ?? 0;
-  const cursor = new Date(startYear, startMonth - 1, 1);
-  let sum = 0;
-  for (let i = 0; i < total; i++) {
-    const month = cursor.getMonth() + 1;
-    if (i >= paid) sum += month === 8 ? (edu.augustAmount ?? 45000) : (edu.februaryAmount ?? 45000);
-    cursor.setMonth(cursor.getMonth() + 6);
-  }
-  return sum;
+  return buildEduSchedule(edu)
+    .filter(p => !p.isPaid)
+    .reduce((s, p) => s + p.amount, 0);
 }
 
 function getLoansDuringSchool(loans: LoanItem[], duration: number): number {
@@ -116,11 +131,13 @@ export default function SavingsPlan({
   const [goals,    setGoals]    = useState<GoalItem[]>([]);
   const [balances, setBalances] = useState<BalanceItem[]>([]);
   const [loans,    setLoans]    = useState<LoanItem[]>([]);
+  const [currentMonthIncome, setCurrentMonthIncome] = useState(0);
   const [avgMonthlyIncome,   setAvgMonthlyIncome]   = useState(0);
   const [avgMonthlyExpense,  setAvgMonthlyExpense]  = useState(0);
   const [totalFixedExpenses, setTotalFixedExpenses] = useState(0);
   const [totalLoanMonthly,   setTotalLoanMonthly]   = useState(0);
   const [totalBudget,        setTotalBudget]        = useState(0);
+  const [budgetsDetail,      setBudgetsDetail]      = useState<BudgetDetailItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   // ── Plans state ──
@@ -141,15 +158,21 @@ export default function SavingsPlan({
   }, []);
 
   // ── Fetch API ──
-  useEffect(() => {
+  const fetchAll = useCallback(async () => {
     if (isDemo) {
       setGoals([
         { id: "g1", name: "研究所基金",   emoji: "🎓", savedAmount: 350000, targetAmount: 900000, linkedSource: "esun_bank" },
         { id: "g2", name: "緊急預備金",   emoji: "🛡️", savedAmount: 80000,  targetAmount: 171000, linkedSource: null },
       ]);
-      setBalances([{ source: "esun_bank", balance: 350000 }]);
-      setAvgMonthlyIncome(75000); setAvgMonthlyExpense(57000);
+      setBalances([{ source: "esun_bank", balance: 350000 }, { source: "mega_bank", balance: 30041 }]);
+      setCurrentMonthIncome(25904); setAvgMonthlyIncome(75000); setAvgMonthlyExpense(57000);
       setTotalFixedExpenses(30000); setTotalLoanMonthly(13000); setTotalBudget(15000);
+      setBudgetsDetail([
+        { category: "飲食", amount: 8000, effectiveAmount: 8000, spent: 4200 },
+        { category: "交通", amount: 3000, effectiveAmount: 3000, spent: 1500 },
+        { category: "娛樂", amount: 2000, effectiveAmount: 2000, spent: 800 },
+        { category: "購物", amount: 2000, effectiveAmount: 2000, spent: 1200 },
+      ]);
       setLoans([
         { status: "active", remainingPrincipal: "46239",  interestRate: "16",  endDate: "2026-10", payments: [{ principalPaid: "4500",  interestPaid: "616"  }] },
         { status: "active", remainingPrincipal: "300000", interestRate: "4.5", endDate: "2029-06", payments: [{ principalPaid: "7500",  interestPaid: "1125" }] },
@@ -166,17 +189,25 @@ export default function SavingsPlan({
       fetch("/api/fixed-expenses").then(r => r.json()),
       fetch("/api/loans").then(r => r.json()),
       fetch(`/api/budgets?month=${thisMonth}`).then(r => r.json()),
-    ]).then(([goalsRes, balancesRes, sumRes, fixedRes, loansRes, budgetsRes]) => {
+      fetch(`/api/summary?month=${thisMonth}`).then(r => r.json()),
+    ]).then(([goalsRes, balancesRes, sumRes, fixedRes, loansRes, budgetsRes, curMonthRes]) => {
       const goalsData: GoalItem[]   = goalsRes.status   === "fulfilled" && Array.isArray(goalsRes.value)   ? goalsRes.value   : [];
       const balancesData: BalanceItem[] = balancesRes.status === "fulfilled" && Array.isArray(balancesRes.value) ? balancesRes.value : [];
       const loansData: LoanItem[]   = loansRes.status   === "fulfilled" && Array.isArray(loansRes.value)   ? loansRes.value   : [];
       const sumData: SummaryData | null = sumRes.status === "fulfilled" && sumRes.value && "monthly" in sumRes.value ? sumRes.value as SummaryData : null;
       const fixedRaw   = fixedRes.status   === "fulfilled" && fixedRes.value   && typeof fixedRes.value   === "object" ? fixedRes.value   : {};
       const budgetsRaw = budgetsRes.status === "fulfilled" && budgetsRes.value && typeof budgetsRes.value === "object" ? budgetsRes.value : {};
+      const curMonthData = curMonthRes.status === "fulfilled" && curMonthRes.value && "totals" in curMonthRes.value ? curMonthRes.value as { totals: { income: number; expense: number } } : null;
       const fixedData: FixedExpenseItem[] = Array.isArray((fixedRaw   as { fixedExpenses?: unknown }).fixedExpenses) ? (fixedRaw   as { fixedExpenses: FixedExpenseItem[] }).fixedExpenses : [];
-      const budgetsData: BudgetItem[]     = Array.isArray((budgetsRaw as { budgets?:       unknown }).budgets)       ? (budgetsRaw as { budgets:       BudgetItem[]     }).budgets       : [];
+      const budgetsData: BudgetDetailItem[] = Array.isArray((budgetsRaw as { budgets?: unknown }).budgets) ? (budgetsRaw as { budgets: BudgetDetailItem[] }).budgets : [];
 
       setGoals(goalsData); setBalances(balancesData); setLoans(loansData);
+      setBudgetsDetail(budgetsData);
+
+      // 當月實際收入（優先），若為 0 則退回 3 個月平均
+      const curIncome = Number(curMonthData?.totals?.income ?? 0);
+      setCurrentMonthIncome(curIncome);
+
       const recent = (sumData?.monthly ?? []).slice(-3);
       if (recent.length > 0) {
         setAvgMonthlyIncome( recent.reduce((s, m) => s + (Number(m.income)  || 0), 0) / recent.length);
@@ -188,9 +219,12 @@ export default function SavingsPlan({
         return pay ? s + Number(pay.principalPaid) + Number(pay.interestPaid)
                    : s + Number(l.remainingPrincipal) * (Number(l.interestRate) / 100 / 12);
       }, 0));
-      setTotalBudget(budgetsData.reduce((s, b) => s + b.amount, 0));
+      setTotalBudget(budgetsData.reduce((s, b) => s + b.effectiveAmount, 0));
     }).catch(e => console.error("[SavingsPlan]", e)).finally(() => setLoading(false));
   }, [isDemo]);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useFinanceChanged(fetchAll);
 
   function saveEfSettings() {
     setEfSettings(efDraft);
@@ -200,7 +234,9 @@ export default function SavingsPlan({
 
   // ── Computed: 每月可存 ──────────────────────────────────────────────────
 
-  const monthlyCanSave = avgMonthlyIncome - totalFixedExpenses - totalLoanMonthly - totalBudget;
+  // 優先用當月實際收入；若當月尚無收入記錄則用 3 個月平均
+  const baseIncome = currentMonthIncome > 0 ? currentMonthIncome : avgMonthlyIncome;
+  const monthlyCanSave = baseIncome - totalFixedExpenses - totalLoanMonthly - totalBudget;
 
   // ── Computed: 緊急預備金 ────────────────────────────────────────────────
 
@@ -243,8 +279,9 @@ export default function SavingsPlan({
     return gradGoal?.savedAmount ?? (grad?.initialSavings ?? 0);
   })();
 
-  const eduMonthlyReserve = eduMonthsAway > 0
-    ? Math.max(0, eduNextAmount - sharedSavings) / eduMonthsAway : 0;
+  // 逾期（monthsAway < 0）或本月（= 0）：分配整筆金額，無法拆月；未來：拆月計算
+  const eduShortfall = Math.max(0, eduNextAmount - sharedSavings);
+  const eduMonthlyReserve = eduMonthsAway > 0 ? eduShortfall / eduMonthsAway : eduShortfall;
 
   // ── Computed: 研究所 ──────────────────────────────────────────────────────
 
@@ -349,17 +386,56 @@ export default function SavingsPlan({
           每月可存（自動試算）
         </p>
         <div className="space-y-1.5 mb-3">
-          {[
-            { label: "平均月收入（近 3 個月）", v: avgMonthlyIncome,   sign: "+", color: "#34D399" },
-            { label: "固定支出",               v: totalFixedExpenses, sign: "−", color: "#F87171" },
-            { label: "貸款月付",               v: totalLoanMonthly,   sign: "−", color: "#F87171" },
-            { label: "月預算上限",             v: totalBudget,        sign: "−", color: "#F87171" },
-          ].map(({ label, v, sign, color }) => (
-            <div key={label} className="flex items-center justify-between text-[13px]">
-              <span style={{ color: "var(--text-sub)" }}>{sign} {label}</span>
-              <span className="tabular-nums font-semibold" style={{ color }}>NT$ {fmt(v)}</span>
+          {/* 當月收入 */}
+          <div className="flex items-center justify-between text-[13px]">
+            <div>
+              <span style={{ color: "var(--text-sub)" }}>
+                + {currentMonthIncome > 0 ? "當月實際收入" : "平均月收入（近 3 個月）"}
+              </span>
+              {currentMonthIncome > 0 && avgMonthlyIncome > 0 && (
+                <span className="ml-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
+                  （3 月均 NT$ {fmt(avgMonthlyIncome)}）
+                </span>
+              )}
             </div>
-          ))}
+            <span className="tabular-nums font-semibold" style={{ color: "#34D399" }}>NT$ {fmt(baseIncome)}</span>
+          </div>
+          {/* 固定支出 */}
+          <div className="flex items-center justify-between text-[13px]">
+            <span style={{ color: "var(--text-sub)" }}>− 固定支出</span>
+            <span className="tabular-nums font-semibold" style={{ color: "#F87171" }}>NT$ {fmt(totalFixedExpenses)}</span>
+          </div>
+          {/* 貸款月付 */}
+          <div className="flex items-center justify-between text-[13px]">
+            <span style={{ color: "var(--text-sub)" }}>− 貸款月付</span>
+            <span className="tabular-nums font-semibold" style={{ color: "#F87171" }}>NT$ {fmt(totalLoanMonthly)}</span>
+          </div>
+          {/* 月預算（折疊顯示分類） */}
+          <div className="flex items-center justify-between text-[13px]">
+            <span style={{ color: "var(--text-sub)" }}>− 月預算上限（{budgetsDetail.length} 項）</span>
+            <span className="tabular-nums font-semibold" style={{ color: "#F87171" }}>NT$ {fmt(totalBudget)}</span>
+          </div>
+          {budgetsDetail.length > 0 && (
+            <div className="pl-4 space-y-1 pt-0.5">
+              {budgetsDetail.map(b => {
+                const pct = b.effectiveAmount > 0 ? Math.min(100, (b.spent / b.effectiveAmount) * 100) : 0;
+                const barColor = pct >= 100 ? "#EF4444" : pct >= 80 ? "#F59E0B" : "#64748B";
+                return (
+                  <div key={b.category}>
+                    <div className="flex items-center justify-between text-[12px]">
+                      <span style={{ color: "var(--text-muted)" }}>{b.category}</span>
+                      <span className="tabular-nums" style={{ color: "var(--text-muted)" }}>
+                        {fmt(b.spent)} / {fmt(b.effectiveAmount)}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: barColor }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="border-t pt-2 flex items-center justify-between" style={{ borderColor: "var(--border-inner)" }}>
             <span className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>= 每月可存</span>
             <span className="text-[28px] font-black tabular-nums"
@@ -369,6 +445,33 @@ export default function SavingsPlan({
           </div>
         </div>
       </div>
+
+      {/* ── 帳戶餘額 ── */}
+      {balances.length > 0 && (
+        <div className="rounded-2xl p-5"
+          style={{ background: "var(--bg-card)", border: "1px solid rgba(52,211,153,0.2)" }}>
+          <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>
+            現有帳戶餘額
+          </p>
+          <div className="space-y-2">
+            {balances.map(b => (
+              <div key={b.source} className="flex items-center justify-between text-[13px]">
+                <span style={{ color: "var(--text-sub)" }}>
+                  {SOURCE_LABEL[b.source] ?? b.source}
+                </span>
+                <span className="tabular-nums font-semibold" style={{ color: "#34D399" }}>
+                  NT$ {fmt(b.balance)}
+                </span>
+              </div>
+            ))}
+            <div className="border-t pt-2 flex items-center justify-between text-[14px] font-bold"
+              style={{ borderColor: "var(--border-inner)" }}>
+              <span style={{ color: "var(--text-primary)" }}>合計</span>
+              <span style={{ color: "#34D399" }}>NT$ {fmt(balances.reduce((s, b) => s + b.balance, 0))}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 三目標狀態 Grid ── */}
       <SectionLabel>各目標現況</SectionLabel>
@@ -408,15 +511,23 @@ export default function SavingsPlan({
 
         {/* 教育學程 */}
         <div className="rounded-2xl p-4 relative overflow-hidden"
-          style={{ background: "var(--bg-card)", border: "1px solid rgba(245,158,11,0.25)" }}>
+          style={{ background: "var(--bg-card)", border: `1px solid ${nextEdu && nextEdu.monthsAway < 0 ? "rgba(239,68,68,0.35)" : "rgba(245,158,11,0.25)"}` }}>
           <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl"
-            style={{ background: "linear-gradient(90deg,#F59E0B,#FCD34D)" }} />
+            style={{ background: nextEdu && nextEdu.monthsAway < 0 ? "linear-gradient(90deg,#EF4444,#F87171)" : "linear-gradient(90deg,#F59E0B,#FCD34D)" }} />
           <div className="flex items-center justify-between mb-2">
             <p className="text-[14px] font-bold" style={{ color: "var(--text-primary)" }}>📚 教育學程</p>
             {nextEdu ? (
               <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-                style={{ background: "rgba(245,158,11,0.15)", color: "#FCD34D" }}>
-                {nextEdu.monthsAway <= 3 ? "即將繳費" : "進行中"}
+                style={
+                  nextEdu.monthsAway < 0
+                    ? { background: "rgba(239,68,68,0.15)", color: "#F87171" }
+                    : nextEdu.monthsAway === 0
+                    ? { background: "rgba(239,68,68,0.12)", color: "#F87171" }
+                    : nextEdu.monthsAway <= 3
+                    ? { background: "rgba(245,158,11,0.15)", color: "#FCD34D" }
+                    : { background: "rgba(245,158,11,0.10)", color: "#F59E0B" }
+                }>
+                {nextEdu.monthsAway < 0 ? "逾期未繳" : nextEdu.monthsAway === 0 ? "本月應繳" : nextEdu.monthsAway <= 3 ? "即將繳費" : "進行中"}
               </span>
             ) : (
               <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
@@ -425,11 +536,17 @@ export default function SavingsPlan({
           </div>
           {nextEdu ? (
             <>
-              <p className="text-[22px] font-black tabular-nums" style={{ color: "#F59E0B" }}>
+              <p className="text-[22px] font-black tabular-nums"
+                style={{ color: nextEdu.monthsAway < 0 ? "#F87171" : "#F59E0B" }}>
                 NT$ {fmt(nextEdu.amount)}
               </p>
               <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-                {nextEdu.label} · 還有 {nextEdu.monthsAway} 個月
+                {nextEdu.label} ·{" "}
+                {nextEdu.monthsAway < 0
+                  ? <span style={{ color: "#F87171" }}>逾期 {Math.abs(nextEdu.monthsAway)} 個月</span>
+                  : nextEdu.monthsAway === 0
+                  ? <span style={{ color: "#FBBF24" }}>本月應繳</span>
+                  : `還有 ${nextEdu.monthsAway} 個月`}
               </p>
             </>
           ) : (
