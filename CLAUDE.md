@@ -50,6 +50,7 @@ src/
 │   │   ├── print-report/           # 列印月報（正式財務會計報表 HTML，自動 print）
 │   │   ├── print-annual-report/    # 列印年報（正式年度財報 HTML，自動 print）
 │   │   ├── savings-challenge/      # 存錢挑戰（GET/PUT，含 linkedGoalId）
+│   │   ├── cron/monthly-snapshot/   # 月度快照（淨資產+健康分數），Cronicle 每月 1 號觸發
 │   │   ├── auth/                   # 登入驗證
 │   │   └── health/                 # 健康檢查
 │   ├── dashboard/                  # 前端主頁面（單頁 SPA，5 主Tab + 進階分析 / 財務規劃 / 工具 下拉）
@@ -160,51 +161,10 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 通用：現金 / 轉帳
 ```
 
-## CSV 銀行代碼對應
-| 代碼 | 銀行 | 備註 |
-|------|------|------|
-| `tbank` | 台灣銀行 | 民國年，Big5 |
-| `cathay_bank` | 國泰世華存款 | |
-| `esun_bank` | 玉山銀行存款 | CSV / XLS |
-| `ctbc_bank` | 中國信託存款 | 民國年 1130328，Big5 |
-| `kgi_bank` | 凱基銀行存款 | TXT 固定寬度格式 |
-| `mega_bank` | 兆豐銀行存款 | |
-| `sinopac_bank` | 永豐銀行存款 | |
-| `yuanta_bank` | 元大銀行存款 | |
-| `cathay_cc` | 國泰世華信用卡 | |
-| `esun_cc` | 玉山信用卡 | |
-| `ctbc_cc` | 中信信用卡 | Big5 |
-| `taishin_cc` | 台新信用卡 | |
-| `sinopac_cc` | 永豐信用卡 | PDF（AI 解析） |
-
-## Prisma Schema 重要模型
-| 模型 | 說明 |
-|------|------|
-| `User` | `lineUserId = "dashboard_user"`（Dashboard 固定用戶） |
-| `Transaction` | unique(userId, date, amount, source) |
-| `BankBalance` | unique(userId, source)；每個 source 只存一筆，更新覆蓋 |
-| `Budget` | unique(userId, category)；循環月設定 |
-| `Loan + LoanPayment` | 貸款與還款記錄 |
-| `CreditCard + CreditCardBill` | 信用卡與帳單 |
-| `FixedExpense` | 固定支出（每月必要支出） |
-| `FinancialGoal` | 財務目標；`linkedSource` 可連結帳戶自動同步已存金額 |
-| `NetWorthSnapshot` | unique(userId, month)；每月淨資產歷史快照 |
-| `PayeeMapping` | 帳號對照（pattern → label/category） |
-| `AuditLog` | 操作記錄 |
-| `SubscriptionMark` | 訂閱標記；`patternKey = "note\|\|amount"`，確認/排除/自訂名稱/備註 |
-| `UserCategory` | unique(userId, name)；自訂分類（type: expense/income/both） |
-| `HealthScoreSnapshot` | unique(userId, month)；財務健康評分歷史快照 |
-| `SavingsChallenge` | unique(userId)；存錢挑戰（type/multiplier/fixedAmount/completedWeeks JSON/linkedGoalId）；linkedGoalId 只讀取目標 savedAmount 顯示，不寫入目標 |
-
-## Notion 欄位對應
-| Notion 欄位 | 來源 |
-|------------|------|
-| 名稱 (title) | note 不空用 note，否則用 category_name |
-| 金額 (number) | amount |
-| 類型 (select) | 收入 / 支出 |
-| 分類 (select) | category_name |
-| 日期 (date) | date |
-| 來源 (select) | source |
+## 參考文件
+- `agent_docs/csv-adapters.md` — CSV 銀行代碼對應、adapter 位置
+- `agent_docs/prisma-schema.md` — Prisma 模型說明、migration 注意事項
+- `agent_docs/notion.md` — Notion 欄位對應、訂閱資料來源
 
 ## 部署（Zeabur）
 - Project ID: `69d2656c18daef21c603e19c`

@@ -5,12 +5,14 @@ import { DEMO_FIXED_EXPENSES, DEMO_LOANS_RAW } from "@/lib/demo-data";
 import { notifyFinanceChanged } from "@/lib/finance-events";
 
 interface FixedExpenseItem {
-  id:         string;
-  name:       string;
-  amount:     number;
-  category:   string;
-  dayOfMonth: number | null;
-  note:       string;
+  id:                   string;
+  name:                 string;
+  amount:               number;
+  category:             string;
+  dayOfMonth:           number | null;
+  note:                 string;
+  matched?:             boolean;
+  matchedTransactionId?: string | null;
 }
 
 interface LoanSummaryItem {
@@ -295,6 +297,42 @@ export default function FixedExpenseManager({ isDemo = false, monthlyIncome = 0 
         )}
       </div>
 
+      {/* ── 本月扣款進度 ── */}
+      {!loading && items.length > 0 && (() => {
+        const matchedCount = items.filter(i => i.matched).length;
+        const total = items.length;
+        const pct = Math.round((matchedCount / total) * 100);
+        return (
+          <div className="rounded-2xl border p-5"
+            style={{ background: "var(--bg-card)", borderColor: "var(--border)", boxShadow: "var(--card-shadow)" }}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[14px] font-semibold tracking-widest uppercase" style={{ color: "var(--text-sub)" }}>
+                📋 本月扣款進度
+              </p>
+              <span className="text-[14px] font-bold tabular-nums" style={{ color: pct === 100 ? "#10b981" : "var(--text-primary)" }}>
+                {matchedCount} / {total} 項（{pct}%）
+              </span>
+            </div>
+            <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "var(--bg-input)" }}>
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: `${pct}%`,
+                  background: pct === 100
+                    ? "linear-gradient(90deg,#10b981,#34d399)"
+                    : pct >= 50
+                    ? "linear-gradient(90deg,#6366f1,#818cf8)"
+                    : "linear-gradient(90deg,#f59e0b,#fbbf24)",
+                }}
+              />
+            </div>
+            {pct === 100 && (
+              <p className="text-[14px] mt-2" style={{ color: "#10b981" }}>本月所有固定支出已確認扣款 ✓</p>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ── 固定支出清單 ── */}
       <Card>
         <div className="px-5 py-4 flex items-center justify-between border-b" style={{ borderColor: "var(--border-inner)" }}>
@@ -333,6 +371,15 @@ export default function FixedExpenseManager({ isDemo = false, monthlyIncome = 0 
                   </span>
                   {item.dayOfMonth && (
                     <span className="text-[14px]" style={{ color: "var(--text-muted)" }}>每月 {item.dayOfMonth} 日</span>
+                  )}
+                  {item.matched !== undefined && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded-full font-bold"
+                      style={{
+                        background: item.matched ? "rgba(16,185,129,0.15)" : "rgba(245,158,11,0.15)",
+                        color: item.matched ? "#10b981" : "#f59e0b",
+                      }}>
+                      {item.matched ? "已扣 ✓" : "未扣"}
+                    </span>
                   )}
                 </div>
                 {item.note && (

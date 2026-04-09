@@ -23,6 +23,7 @@ model User {
   healthScoreSnapshots HealthScoreSnapshot[]
   userCategories       UserCategory[]
   tasks                Task[]
+  settings             UserSettings?
 }
 
 model Budget {
@@ -247,6 +248,28 @@ model Task {
   @@index([userId])
   @@index([userId, status])
   @@index([dueDate])
+}
+
+model UserSettings {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  expenseAlertThreshold Int      @default(3000)
+  incomeAlertThreshold  Int      @default(10000)
+  balanceAlertThreshold Int      @default(5000)
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DuplicateDismissal {
+  id             String   @id @default(cuid())
+  transactionAId String
+  transactionBId String
+  createdAt      DateTime @default(now())
+
+  @@unique([transactionAId, transactionBId])
+  @@index([transactionAId])
+  @@index([transactionBId])
 }
 
 model AuditLog {

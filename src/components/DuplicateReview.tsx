@@ -100,7 +100,17 @@ export default function DuplicateReview() {
     setDeleting(null);
   };
 
-  const dismiss = (pk: string) => setDismissed(prev => new Set(Array.from(prev).concat(pk)));
+  const dismiss = async (pair: DuplicatePair) => {
+    const pk = pairKey(pair);
+    try {
+      await fetch("/api/duplicate-candidates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transactionAId: pair.a.id, transactionBId: pair.b.id }),
+      });
+      setDismissed(prev => new Set(Array.from(prev).concat(pk)));
+    } catch (e) { console.error(e); }
+  };
 
   const visible = pairs.filter(p => !dismissed.has(pairKey(p)));
 
@@ -162,7 +172,7 @@ export default function DuplicateReview() {
               <TxCard tx={pair.b} side="B" onDelete={() => deleteOne(pair.b.id, pk)} deleting={deleting === pair.b.id} />
             </div>
             <button
-              onClick={() => dismiss(pk)}
+              onClick={() => dismiss(pair)}
               disabled={isDeleting}
               className="w-full py-2 rounded-xl text-[13px] font-semibold transition-all disabled:opacity-40"
               style={{ background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border-inner)" }}>

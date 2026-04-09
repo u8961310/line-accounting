@@ -30,6 +30,7 @@ import UserGuide from "@/components/UserGuide";
 import DuplicateReview from "@/components/DuplicateReview";
 import CleanOtherCategory from "@/components/CleanOtherCategory";
 import NoteCleanup from "@/components/NoteCleanup";
+import AlertSettings from "@/components/AlertSettings";
 import { THEMES, themeToCSS, type AppTheme } from "@/lib/themes";
 import { getDailyQuote, getRandomQuote, type FinancialQuote } from "@/lib/quotes";
 import type { DuplicatePair } from "@/app/api/duplicate-candidates/route";
@@ -53,7 +54,7 @@ interface NetWorth {
 }
 type TabId = "charts" | "transactions" | "loans" | "budget" | "subscriptions" | "annual"
   | "retirement" | "fire" | "income-stability" | "expense-ratio" | "account-flow" | "spending-forecast" | "cashflow-forecast" | "bill-calendar" | "grad-school" | "savings-plan" | "education-program" | "milestone" | "personality"
-  | "import" | "guide" | "audit" | "categories" | "duplicate-review" | "clean-other" | "note-cleanup";
+  | "import" | "guide" | "audit" | "categories" | "duplicate-review" | "clean-other" | "note-cleanup" | "alert-settings";
 interface MonthDetail {
   byCategory: CategorySummary[];
   totals: { income: number; expense: number; net: number };
@@ -109,6 +110,7 @@ const TOOLS_TABS: { id: TabId; label: string }[] = [
   { id: "clean-other",      label: "分類清理" },
   { id: "note-cleanup",     label: "備注整理" },
   { id: "audit",            label: "稽核記錄" },
+  { id: "alert-settings",   label: "警報設定" },
   { id: "guide",            label: "使用說明" },
 ];
 
@@ -783,7 +785,7 @@ export default function DashboardPage() {
 
   // Tab 記憶 — paint 前同步讀取，避免閃爍；useLayoutEffect 不在 server 執行，hydration 不會失配
   useLayoutEffect(() => {
-    const VALID_TABS = new Set<string>(["charts","transactions","loans","budget","subscriptions","annual","retirement","fire","income-stability","expense-ratio","account-flow","spending-forecast","cashflow-forecast","bill-calendar","grad-school","savings-plan","education-program","import","guide","audit","categories","duplicate-review","clean-other"]);
+    const VALID_TABS = new Set<string>(["charts","transactions","loans","budget","subscriptions","annual","retirement","fire","income-stability","expense-ratio","account-flow","spending-forecast","cashflow-forecast","bill-calendar","grad-school","savings-plan","education-program","import","guide","audit","categories","duplicate-review","clean-other","note-cleanup","alert-settings"]);
     const saved = localStorage.getItem("activeTab") as TabId | null;
     if (saved && VALID_TABS.has(saved)) setActiveTab(saved);
   }, []);
@@ -5009,6 +5011,8 @@ export default function DashboardPage() {
 
         {/* ── Note Cleanup ── */}
         {activeTab === "note-cleanup" && <NoteCleanup />}
+
+        {activeTab === "alert-settings" && <AlertSettings />}
 
       </main>
 

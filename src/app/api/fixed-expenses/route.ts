@@ -13,22 +13,51 @@ export async function GET(): Promise<NextResponse> {
   try {
     const user = await getUser();
     if (!user) return NextResponse.json({ fixedExpenses: [] });
-  
+
     const fixedExpenses = await prisma.fixedExpense.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "asc" },
     });
-  
-    return NextResponse.json({
-      fixedExpenses: fixedExpenses.map((f) => ({
-        id:         f.id,
-        name:       f.name,
-        amount:     parseFloat(f.amount.toString()),
-        category:   f.category,
-        dayOfMonth: f.dayOfMonth,
-        note:       f.note,
-      })),
+
+    // 本月範圍
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    // 取本月所有支出交易，用於比對
+    const monthTx = await prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        type: "支出",
+        date: { gte: monthStart, lt: monthEnd },
+      },
+      select: { id: true, amount: true, category: true, note: true },
     });
+
+    const result = fixedExpenses.map((f) => {
+      const amount = parseFloat(f.amount.toString());
+      // 比對邏輯：名稱出現在備註中 OR (同分類 + 金額誤差 ≤ 10%)
+      const match = monthTx.find((tx) => {
+        const txAmt = parseFloat(tx.amount.toString());
+        const nameMatch = tx.note.includes(f.name);
+        const amtClose = Math.abs(txAmt - amount) <= amount * 0.1;
+        const categoryMatch = tx.category === f.category;
+        return nameMatch || (categoryMatch && amtClose);
+      });
+
+      return {
+        id:                   f.id,
+        name:                 f.name,
+        amount,
+        category:             f.category,
+        dayOfMonth:           f.dayOfMonth,
+        note:                 f.note,
+        matched:              !!match,
+        matchedTransactionId: match?.id ?? null,
+      };
+    });
+
+    return NextResponse.json({ fixedExpenses: result });
     } catch (e) {
     console.error("[fixed-expenses]", e);
     return NextResponse.json({ error: "操作失敗" }, { status: 500 });
