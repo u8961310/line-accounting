@@ -192,10 +192,38 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as {
-      date: string; type: string; amount: number; category: string; note?: string; source?: string;
+      date: string; type: string; amount: number; category: string; note?: string; source?: string; force?: boolean;
     };
     const user = await prisma.user.findFirst({ where: { lineUserId: "dashboard_user" } });
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    const source = body.source ?? "manual";
+
+    // 只對手動新增做重複預警（LINE webhook / CSV 匯入略過）
+    if (source === "manual" && !body.force) {
+      const txDate = new Date(body.date);
+      const dateFrom = new Date(txDate.getTime() - 2 * 24 * 60 * 60 * 1000);
+      const dateTo   = new Date(txDate.getTime() + 2 * 24 * 60 * 60 * 1000);
+
+      const existing = await prisma.transaction.findMany({
+        where: {
+          userId: user.id,
+          source: "manual",
+          type:   body.type,
+          amount: { gte: body.amount - 0.01, lte: body.amount + 0.01 },
+          date:   { gte: dateFrom, lte: dateTo },
+        },
+        select: { id: true, date: true, note: true },
+        take: 5,
+      });
+
+      if (existing.length > 0) {
+        return NextResponse.json(
+          { error: "duplicate", existing: existing.map(t => ({ id: t.id, date: t.date.toISOString().split("T")[0], note: t.note })) },
+          { status: 409 }
+        );
+      }
+    }
 
     const tx = await prisma.transaction.create({
       data: {
@@ -205,10 +233,34 @@ export async function POST(request: NextRequest) {
         amount: body.amount,
         category: body.category,
         note: body.note ?? "",
-        source: body.source ?? "manual",
+        source,
       },
     });
-    return NextResponse.json({ id: tx.id });
+
+    // 轉帳主動偵測：查近 3 天有沒有同金額、相反方向、尚未配對的交易
+    const txDate = new Date(body.date);
+    const dateFrom = new Date(txDate.getTime() - 3 * 24 * 60 * 60 * 1000);
+    const dateTo   = new Date(txDate.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const oppositeType = body.type === "支出" ? "收入" : "支出";
+
+    const transferCandidate = await prisma.transaction.findFirst({
+      where: {
+        userId: user.id,
+        type: oppositeType,
+        amount: { gte: body.amount - 0.01, lte: body.amount + 0.01 },
+        date: { gte: dateFrom, lte: dateTo },
+        transferPairId: null,
+        id: { not: tx.id },
+      },
+      select: { id: true, date: true, note: true, source: true },
+    });
+
+    return NextResponse.json({
+      id: tx.id,
+      transferCandidate: transferCandidate
+        ? { id: transferCandidate.id, date: transferCandidate.date.toISOString().split("T")[0], note: transferCandidate.note, source: transferCandidate.source }
+        : null,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Failed" }, { status: 500 });

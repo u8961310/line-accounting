@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifySignature, replyMessage, replyRawMessage, getUserProfile } from "@/lib/line";
 import { parseExpenseText } from "@/lib/parser";
 import { prisma } from "@/lib/db";
+import { matchCategoryRule } from "@/lib/category-rules";
 import {
   buildRecordedMessage,
   buildSummaryMessage,
@@ -127,6 +128,13 @@ async function handleTextMessage(event: LineEvent, userId: string, text: string)
   if (!parsed) {
     await replyRawMessage(replyToken, [buildErrorMessage()]);
     return;
+  }
+
+  // 套用使用者自定義分類規則（優先於 AI 分類）
+  const dashUserForRule = await prisma.user.findFirst({ where: { lineUserId: "dashboard_user" } });
+  if (dashUserForRule) {
+    const override = await matchCategoryRule(dashUserForRule.id, parsed.note, "line");
+    if (override) parsed.category = override;
   }
 
   // 更新 LINE 使用者顯示名稱（非必要，背景執行）

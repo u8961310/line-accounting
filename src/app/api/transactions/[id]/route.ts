@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { extractKeyword } from "@/lib/category-rules";
 
 export const dynamic = "force-dynamic";
 
@@ -45,8 +46,23 @@ export async function PATCH(
     const tx = await prisma.transaction.update({
       where: { id: params.id },
       data,
-      select: { id: true, category: true, type: true, mood: true, note: true, amount: true },
+      select: { id: true, category: true, type: true, mood: true, note: true, amount: true, source: true },
     });
+
+    // 若使用者手動改了 category，且 note 有內容 → 自動寫入分類規則
+    if (body.category && tx.note.trim()) {
+      const user = await prisma.user.findFirst({ where: { lineUserId: "dashboard_user" } });
+      if (user) {
+        const keyword = extractKeyword(tx.note);
+        if (keyword) {
+          void prisma.categoryRule.upsert({
+            where: { userId_keyword: { userId: user.id, keyword } },
+            update: { category: tx.category },
+            create: { userId: user.id, keyword, category: tx.category, source: null },
+          }).catch(console.error);
+        }
+      }
+    }
 
     return NextResponse.json(tx);
   } catch (e) {

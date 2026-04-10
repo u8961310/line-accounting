@@ -24,6 +24,8 @@ model User {
   userCategories       UserCategory[]
   tasks                Task[]
   settings             UserSettings?
+  categoryRules        CategoryRule[]
+  personalDebts        PersonalDebt[]
 }
 
 model Budget {
@@ -56,18 +58,19 @@ model BankBalance {
 }
 
 model Transaction {
-  id           String   @id @default(cuid())
-  userId       String
-  date         DateTime
-  amount       Decimal  @db.Decimal(12, 2)
-  category     String
-  type         String   // 收入 | 支出
-  note         String   @default("")
-  source       String   // line | tbank | cathay_bank | esun_bank | ctbc_bank | cathay_cc | esun_cc | ctbc_cc | taishin_cc
-  incomeSource String?  // salary / freelance / bonus / transfer（僅 type=收入 時使用）
-  mood         String?  // 必要 | 衝動 | 計畫
-  notionPageId String?
-  createdAt    DateTime @default(now())
+  id             String   @id @default(cuid())
+  userId         String
+  date           DateTime
+  amount         Decimal  @db.Decimal(12, 2)
+  category       String
+  type           String   // 收入 | 支出
+  note           String   @default("")
+  source         String   // line | tbank | cathay_bank | esun_bank | ctbc_bank | cathay_cc | esun_cc | ctbc_cc | taishin_cc
+  incomeSource   String?  // salary / freelance / bonus / transfer（僅 type=收入 時使用）
+  mood           String?  // 必要 | 衝動 | 計畫
+  notionPageId   String?
+  transferPairId String?  // 轉帳配對：指向另一筆 Transaction 的 id
+  createdAt      DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -270,6 +273,39 @@ model DuplicateDismissal {
   @@unique([transactionAId, transactionBId])
   @@index([transactionAId])
   @@index([transactionBId])
+}
+
+model CategoryRule {
+  id          String    @id @default(cuid())
+  userId      String
+  keyword     String    // note 含此字串時套用
+  category    String
+  source      String?   // null = 所有來源；指定則只套用該來源
+  hitCount    Int       @default(0)
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, keyword])
+  @@index([userId])
+}
+
+model PersonalDebt {
+  id            String    @id @default(cuid())
+  userId        String
+  counterparty  String    // 對象姓名
+  direction     String    // "owed_to_me" | "i_owe"
+  amount        Decimal   @db.Decimal(12, 2)
+  note          String    @default("")
+  dueDate       DateTime?
+  settledAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model AuditLog {

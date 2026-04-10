@@ -19,6 +19,7 @@ import { parseXls } from "./xls";
 import { batchCategorize } from "./categorizer";
 import { getSubscriptionsFromNotion } from "../notion";
 import { prisma } from "../db";
+import { matchCategoryRule } from "../category-rules";
 
 const ADAPTERS: Record<Exclude<BankSource, "unknown" | "sinopac_cc">, CsvAdapter> = {
   tbank:        tbankAdapter,
@@ -208,6 +209,15 @@ async function parseAndSave(
 
   // Post-processing: auto-apply "訂閱" category if note matches a Notion subscription
   transactions = await applySubscriptionCategories(transactions);
+
+  // Post-processing: apply user-defined CategoryRules (highest priority, overrides AI)
+  const user = await prisma.user.findFirst({ where: { lineUserId: "dashboard_user" } });
+  if (user) {
+    transactions = await Promise.all(transactions.map(async tx => {
+      const override = await matchCategoryRule(user.id, tx.note ?? "", tx.source);
+      return override ? { ...tx, category: override } : tx;
+    }));
+  }
 
   await saveTransactions(transactions, userId, result);
   return result;

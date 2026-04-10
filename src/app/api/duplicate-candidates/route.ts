@@ -42,6 +42,20 @@ export async function GET(): Promise<NextResponse> {
       dismissedSet.add(`${d.transactionBId}|${d.transactionAId}`);
     }
 
+    // 預計算常態消費：非 manual/line 來源，同金額 30 天內出現 ≥4 次 → 視為常態，跳過重複偵測
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const routineKeys = new Set<string>();
+    const csvAmtCount = new Map<string, number>();
+    for (const t of txs) {
+      if (t.source === "manual" || t.source === "line" || t.source === "mcp") continue;
+      if (t.date < thirtyDaysAgo) continue;
+      const key = `${t.source}|${parseFloat(t.amount.toString()).toFixed(2)}`;
+      csvAmtCount.set(key, (csvAmtCount.get(key) ?? 0) + 1);
+    }
+    Array.from(csvAmtCount.entries()).forEach(([key, count]) => {
+      if (count >= 4) routineKeys.add(key);
+    });
+
     const pairs: DuplicatePair[] = [];
     const usedIds = new Set<string>();
 
@@ -54,13 +68,17 @@ export async function GET(): Promise<NextResponse> {
         const b = txs[j];
         if (usedIds.has(b.id)) continue;
         if (b.type !== a.type) continue;
-        if (b.source === a.source) continue;
+        if (b.source !== a.source) continue;  // 只偵測同來源重複
 
         const bAmt = parseFloat(b.amount.toString());
         if (Math.abs(aAmt - bAmt) > 0.01) continue;
 
         const dayDiff = Math.abs(a.date.getTime() - b.date.getTime()) / (1000 * 60 * 60 * 24);
-        if (dayDiff > 1) continue;
+        if (dayDiff > 2) continue;
+
+        // 跳過常態消費（同來源同金額 30 天內 ≥4 次）
+        const aKey = `${a.source}|${aAmt.toFixed(2)}`;
+        if (routineKeys.has(aKey)) continue;
 
         // 跳過已 dismiss 的 pair
         if (dismissedSet.has(`${a.id}|${b.id}`)) continue;

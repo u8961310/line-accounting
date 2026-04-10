@@ -28,6 +28,11 @@ import SavingsPlan from "@/components/SavingsPlan";
 import CategoryManager from "@/components/CategoryManager";
 import UserGuide from "@/components/UserGuide";
 import DuplicateReview from "@/components/DuplicateReview";
+import DuplicateBanner from "@/components/DuplicateBanner";
+import { sourceLabel } from "@/lib/source-labels";
+import QuickEntries from "@/components/QuickEntries";
+import CategoryRulesManager from "@/components/CategoryRulesManager";
+import PersonalDebtManager from "@/components/PersonalDebtManager";
 import CleanOtherCategory from "@/components/CleanOtherCategory";
 import NoteCleanup from "@/components/NoteCleanup";
 import AlertSettings from "@/components/AlertSettings";
@@ -54,7 +59,7 @@ interface NetWorth {
 }
 type TabId = "charts" | "transactions" | "loans" | "budget" | "subscriptions" | "annual"
   | "retirement" | "fire" | "income-stability" | "expense-ratio" | "account-flow" | "spending-forecast" | "cashflow-forecast" | "bill-calendar" | "grad-school" | "savings-plan" | "education-program" | "milestone" | "personality"
-  | "import" | "guide" | "audit" | "categories" | "duplicate-review" | "clean-other" | "note-cleanup" | "alert-settings";
+  | "import" | "guide" | "audit" | "categories" | "duplicate-review" | "clean-other" | "note-cleanup" | "alert-settings" | "category-rules" | "personal-debts";
 interface MonthDetail {
   byCategory: CategorySummary[];
   totals: { income: number; expense: number; net: number };
@@ -105,11 +110,13 @@ const TABS: { id: TabId; label: string }[] = [
 
 const TOOLS_TABS: { id: TabId; label: string }[] = [
   { id: "categories",       label: "自訂分類" },
+  { id: "category-rules",   label: "分類規則" },
   { id: "import",           label: "匯入資料" },
   { id: "duplicate-review", label: "重複審核" },
   { id: "clean-other",      label: "分類清理" },
   { id: "note-cleanup",     label: "備注整理" },
   { id: "audit",            label: "稽核記錄" },
+  { id: "personal-debts",   label: "借貸往來" },
   { id: "alert-settings",   label: "警報設定" },
   { id: "guide",            label: "使用說明" },
 ];
@@ -557,6 +564,9 @@ export default function DashboardPage() {
   const [notionMsg,     setNotionMsg]     = useState<string | null>(null);
   const [addForm,      setAddForm]      = useState({ date: new Date().toISOString().split("T")[0], type: "收入", amount: "", category: "", note: "" });
   const [addSaving,    setAddSaving]    = useState(false);
+  const [dupWarning,   setDupWarning]   = useState<{ id: string; date: string; note: string }[] | null>(null);
+  const [dupRefreshKey, setDupRefreshKey] = useState(0);
+  const [transferToast, setTransferToast] = useState<{ newTxId: string; candidate: { id: string; date: string; note: string; source: string } } | null>(null);
   const [splitModal,   setSplitModal]   = useState<SplitTx | null>(null);
   const [splitParts,   setSplitParts]   = useState<SplitPart[]>([{ category: "", amount: "", note: "" }, { category: "", amount: "", note: "" }]);
   const [splitSaving,  setSplitSaving]  = useState(false);
@@ -606,8 +616,6 @@ export default function DashboardPage() {
   const [aiInsightOpen,    setAiInsightOpen]    = useState(true);
   const [dailyQuote,       setDailyQuote]       = useState<FinancialQuote>(() => getDailyQuote());
   const [aiInsightMonth,   setAiInsightMonth]   = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; });
-  const [notionSyncingInsight, setNotionSyncingInsight] = useState(false);
-  const [notionInsightUrl,     setNotionInsightUrl]     = useState<string | null>(null);
   const [anomalies,      setAnomalies]      = useState<{ category: string; current: number; mean: number; stddev: number; zscore: number; prevMonths: number[] }[]>([]);
   const [anomalyLoading, setAnomalyLoading] = useState(false);
   const [selectedMonth,      setSelectedMonth]      = useState<string | null>(null);
@@ -704,7 +712,6 @@ export default function DashboardPage() {
       const d = await res.json() as { insight?: string; charts?: { donut?: string | null; bar?: string | null }; meta?: { totalIncome: number; totalExpense: number; savingRate: string; overBudgetCount: number }; error?: string };
       if (d.error) { setAiInsightErr(d.error); return; }
       if (d.insight && d.meta) setAiInsight({ insight: d.insight, charts: d.charts ?? {}, meta: d.meta });
-      setNotionInsightUrl(null);
     } catch { setAiInsightErr("網路錯誤"); }
     finally { setAiInsightLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -785,7 +792,7 @@ export default function DashboardPage() {
 
   // Tab 記憶 — paint 前同步讀取，避免閃爍；useLayoutEffect 不在 server 執行，hydration 不會失配
   useLayoutEffect(() => {
-    const VALID_TABS = new Set<string>(["charts","transactions","loans","budget","subscriptions","annual","retirement","fire","income-stability","expense-ratio","account-flow","spending-forecast","cashflow-forecast","bill-calendar","grad-school","savings-plan","education-program","import","guide","audit","categories","duplicate-review","clean-other","note-cleanup","alert-settings"]);
+    const VALID_TABS = new Set<string>(["charts","transactions","loans","budget","subscriptions","annual","retirement","fire","income-stability","expense-ratio","account-flow","spending-forecast","cashflow-forecast","bill-calendar","grad-school","savings-plan","education-program","import","guide","audit","categories","duplicate-review","clean-other","note-cleanup","alert-settings","category-rules","personal-debts"]);
     const saved = localStorage.getItem("activeTab") as TabId | null;
     if (saved && VALID_TABS.has(saved)) setActiveTab(saved);
   }, []);
@@ -826,7 +833,7 @@ export default function DashboardPage() {
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       // Esc：關閉 modal
       if (e.key === "Escape") {
-        setAddModal(false);
+        setAddModal(false); setDupWarning(null);
         setSplitModal(null);
         setMergeModal(false);
         setGoalModal(null);
@@ -1266,23 +1273,35 @@ export default function DashboardPage() {
     finally { setNotionSyncing(false); }
   }
 
-  async function saveManualTx() {
+  async function saveManualTx(force = false) {
     const amount = parseFloat(addForm.amount);
     if (!addForm.date || isNaN(amount) || amount <= 0 || !addForm.category.trim()) return;
     setAddSaving(true);
     try {
-      await fetch("/api/transactions", {
+      const res = await fetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: addForm.date, type: addForm.type, amount, category: addForm.category.trim(), note: addForm.note }),
+        body: JSON.stringify({ date: addForm.date, type: addForm.type, amount, category: addForm.category.trim(), note: addForm.note, ...(force ? { force: true } : {}) }),
       });
+      if (res.status === 409) {
+        const data = await res.json() as { error: string; existing: { id: string; date: string; note: string }[] };
+        setDupWarning(data.existing);
+        setAddSaving(false);
+        return;
+      }
+      const result = await res.json() as { id: string; transferCandidate?: { id: string; date: string; note: string; source: string } | null };
+      setDupWarning(null);
       setAddModal(false);
       if (addForm.note.trim()) addNoteTemplate(addForm.note.trim());
       setAddForm({ date: new Date().toISOString().split("T")[0], type: "收入", amount: "", category: "", note: "" });
       setCategories(prev => prev.includes(addForm.category.trim()) ? prev : [...prev, addForm.category.trim()].sort());
-      // refresh tx list if on transactions tab
+      setDupRefreshKey(k => k + 1);
       if (activeTab === "transactions") fetchTxPage(1);
       fetchData();
+      // 轉帳主動配對提示
+      if (result?.transferCandidate) {
+        setTransferToast({ newTxId: result.id, candidate: result.transferCandidate });
+      }
     } catch (e) { console.error(e); }
     setAddSaving(false);
   }
@@ -2104,7 +2123,6 @@ export default function DashboardPage() {
                     onChange={e => {
                       setAiInsightMonth(e.target.value);
                       setAiInsight(null);
-                      setNotionInsightUrl(null);
                       setAiInsightOpen(true);
                     }}
                     className="rounded-xl px-2 py-1 text-[13px] outline-none"
@@ -2121,7 +2139,7 @@ export default function DashboardPage() {
                   {aiInsight && !aiInsightLoading && (
                     <>
                       <button
-                        onClick={() => { setAiInsight(null); setNotionInsightUrl(null); setAiInsightOpen(true); fetchAiInsight(); }}
+                        onClick={() => { setAiInsight(null); setAiInsightOpen(true); fetchAiInsight(); }}
                         className="px-3 py-1.5 rounded-xl text-[13px] font-semibold transition-opacity hover:opacity-80"
                         style={{ background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border-inner)" }}>
                         重新分析
@@ -2189,36 +2207,6 @@ export default function DashboardPage() {
                     </div>
                   )}
 
-                  {/* Notion 同步 */}
-                  <div className="flex items-center gap-3 pt-1">
-                    <button
-                      onClick={async () => {
-                        setNotionSyncingInsight(true);
-                        try {
-                          const res = await fetch("/api/ai-insight", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ month: aiInsightMonth, insight: aiInsight.insight, charts: aiInsight.charts }),
-                          });
-                          const data = await res.json() as { success?: boolean; url?: string; error?: string };
-                          if (data.url) setNotionInsightUrl(data.url);
-                          else alert(data.error ?? "同步失敗");
-                        } catch { alert("網路錯誤"); }
-                        finally { setNotionSyncingInsight(false); }
-                      }}
-                      disabled={notionSyncingInsight}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[13px] font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-                      style={{ background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border-inner)" }}>
-                      <span>{notionSyncingInsight ? "同步中…" : "📝 同步到 Notion"}</span>
-                    </button>
-                    {notionInsightUrl && (
-                      <a href={notionInsightUrl} target="_blank" rel="noopener noreferrer"
-                        className="text-[13px] font-semibold transition-opacity hover:opacity-80"
-                        style={{ color: "var(--accent)" }}>
-                        ✅ 查看 Notion 頁面 →
-                      </a>
-                    )}
-                  </div>
                 </div>
               )}
             </div>
@@ -4150,6 +4138,27 @@ export default function DashboardPage() {
               );
             })()}
 
+            <QuickEntries
+              refreshKey={dupRefreshKey}
+              onAdd={entry => {
+                void fetch("/api/transactions", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ date: new Date().toISOString().split("T")[0], type: entry.type, amount: entry.amount, category: entry.category, note: "", source: "manual", force: true }),
+                }).then(r => r.json()).then((result: { id: string; transferCandidate?: { id: string; date: string; note: string; source: string } | null }) => {
+                  setDupRefreshKey(k => k + 1);
+                  fetchTxPage(1);
+                  fetchData();
+                  if (result?.transferCandidate) setTransferToast({ newTxId: result.id, candidate: result.transferCandidate });
+                });
+              }}
+            />
+
+            <DuplicateBanner
+              refreshKey={dupRefreshKey}
+              onRefresh={() => { setDupRefreshKey(k => k + 1); fetchTxPage(1); fetchData(); }}
+            />
+
             <Card>
               {/* Search + filter toggle */}
               {(() => {
@@ -5014,7 +5023,52 @@ export default function DashboardPage() {
 
         {activeTab === "alert-settings" && <AlertSettings />}
 
+        {activeTab === "category-rules" && (
+          <div className="p-4 sm:p-6">
+            <h2 className="text-[18px] font-bold mb-4" style={{ color: "var(--text-primary)" }}>分類規則</h2>
+            <CategoryRulesManager />
+          </div>
+        )}
+
+        {activeTab === "personal-debts" && (
+          <div className="p-4 sm:p-6">
+            <PersonalDebtManager />
+          </div>
+        )}
+
       </main>
+
+      {/* ── 轉帳配對 Toast ── */}
+      {transferToast && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-sm rounded-2xl px-5 py-4 shadow-2xl"
+          style={{ background: "var(--bg-card)", border: "1px solid rgba(99,102,241,0.4)" }}>
+          <p className="text-[14px] font-semibold mb-1" style={{ color: "#818CF8" }}>💸 這筆是轉帳嗎？</p>
+          <p className="text-[13px] mb-3" style={{ color: "var(--text-sub)" }}>
+            找到 {transferToast.candidate.date} 一筆 {sourceLabel(transferToast.candidate.source)} 同金額反向交易
+            {transferToast.candidate.note ? `：${transferToast.candidate.note}` : ""}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                void fetch("/api/transfer-pair", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ txAId: transferToast.newTxId, txBId: transferToast.candidate.id }),
+                }).then(() => { setTransferToast(null); fetchTxPage(1); });
+              }}
+              className="flex-1 py-2 rounded-xl text-[13px] font-bold text-white"
+              style={{ background: "linear-gradient(135deg,#4F46E5,#818CF8)" }}>
+              是，標記轉帳
+            </button>
+            <button
+              onClick={() => setTransferToast(null)}
+              className="flex-1 py-2 rounded-xl text-[13px] font-semibold transition-opacity hover:opacity-70"
+              style={{ border: "1px solid var(--border)", color: "var(--text-sub)" }}>
+              否，忽略
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Split Transaction Modal ── */}
       {splitModal && (
@@ -5054,7 +5108,7 @@ export default function DashboardPage() {
                       className="flex-1 rounded-lg px-2 py-1.5 text-[13px] outline-none"
                       style={{ background: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-primary)" }}>
                       <option value="">選分類</option>
-                      {categories.map(c => <option key={c} value={c} style={{ background: "var(--bg-card)" }}>{c}</option>)}
+                      {Array.from(new Set([...categories, ...customExpenseCats, ...customIncomeCats])).sort().map(c => <option key={c} value={c} style={{ background: "var(--bg-card)" }}>{c}</option>)}
                     </select>
                     <input type="number" min="0" placeholder="金額" value={part.amount}
                       onChange={e => setSplitParts(p => p.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
@@ -5148,12 +5202,12 @@ export default function DashboardPage() {
       {addModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
           style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
-          onClick={e => { if (e.target === e.currentTarget) setAddModal(false); }}>
+          onClick={e => { if (e.target === e.currentTarget) { setAddModal(false); setDupWarning(null); } }}>
           <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto"
             style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 24px 60px rgba(0,0,0,0.4)" }}>
             <div className="flex items-center justify-between">
               <h3 className="text-[16px] font-bold" style={{ color: "var(--text-primary)" }}>新增記帳</h3>
-              <button onClick={() => setAddModal(false)} className="text-xl leading-none hover:opacity-60 transition-opacity" style={{ color: "var(--text-muted)" }}>×</button>
+              <button onClick={() => { setAddModal(false); setDupWarning(null); }} className="text-xl leading-none hover:opacity-60 transition-opacity" style={{ color: "var(--text-muted)" }}>×</button>
             </div>
 
             {/* Type toggle */}
@@ -5223,13 +5277,34 @@ export default function DashboardPage() {
                 style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-primary)" }} />
             </div>
 
+            {dupWarning && dupWarning.length > 0 && (
+              <div className="rounded-xl p-3 space-y-2" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.35)" }}>
+                <p className="text-[13px] font-semibold" style={{ color: "#F59E0B" }}>⚠️ 疑似重複，{dupWarning.length} 筆同金額記錄已存在：</p>
+                {dupWarning.map(t => (
+                  <p key={t.id} className="text-[12px]" style={{ color: "var(--text-sub)" }}>{t.date} {t.note ? `— ${t.note}` : ""}</p>
+                ))}
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setDupWarning(null)}
+                    className="flex-1 py-1.5 rounded-lg text-[13px] font-semibold transition-opacity hover:opacity-70"
+                    style={{ border: "1px solid var(--border)", color: "var(--text-sub)" }}>
+                    取消
+                  </button>
+                  <button onClick={() => saveManualTx(true)} disabled={addSaving}
+                    className="flex-1 py-1.5 rounded-lg text-[13px] font-bold transition-opacity hover:opacity-90 disabled:opacity-40"
+                    style={{ background: "#F59E0B", color: "#fff" }}>
+                    {addSaving ? "儲存中…" : "確認仍要新增"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-3 pt-1">
-              <button onClick={() => setAddModal(false)}
+              <button onClick={() => { setAddModal(false); setDupWarning(null); }}
                 className="flex-1 py-2.5 rounded-xl text-[14px] font-semibold transition-opacity hover:opacity-70"
                 style={{ border: "1px solid var(--border)", color: "var(--text-sub)" }}>
                 取消
               </button>
-              <button onClick={saveManualTx} disabled={addSaving}
+              <button onClick={() => saveManualTx()} disabled={addSaving}
                 className="flex-1 py-2.5 rounded-xl text-[14px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                 style={{ background: "var(--btn-gradient)" }}>
                 {addSaving ? "儲存中…" : "儲存"}

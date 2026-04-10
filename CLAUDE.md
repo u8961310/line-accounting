@@ -3,12 +3,11 @@
 ## 可用 Skills（輸入 `/` 觸發）
 | Skill | 用途 |
 |-------|------|
-| `/todo-scan` | 盤點 CLAUDE.md 待辦，按優先序列出並給建議 |
-| `/todo-done [關鍵字] [備註]` | 將指定 TODO 標記為完成並補充實作備註 |
+| `/todo scan` | 盤點 CLAUDE.md 待辦，按優先序列出並給建議 |
+| `/todo done [關鍵字] [備註]` | 將指定 TODO 標記為完成並補充實作備註 |
 | `/security-check` | 逐項核查 8 個安全漏洞現況 |
 | `/new-bank-adapter [銀行名] [source] [欄位]` | 新增銀行 CSV adapter |
 | `/mcp-add [工具名] [描述]` | 新增 MCP 工具並更新文件 |
-| `/suggest-features` | 分析專案現況，提出新功能建議，確認後自動寫入 CLAUDE.md TODO |
 | `/update-guide` | 功能完成後判斷使用說明是否需要更新，若需要則直接修改 UserGuide.tsx |
 | `/deploy` | 部署 line-accounting 到 Zeabur |
 
@@ -39,7 +38,7 @@ src/
 │   │   ├── net-worth/snapshots/    # 淨資產歷史快照（upsert by month）
 │   │   ├── payees/                 # 帳號對照 CRUD
 │   │   ├── transfer-candidates/    # 疑似轉帳配對
-│   │   ├── duplicate-candidates/   # 疑似重複交易（同類型+金額+日期±1天）
+│   │   ├── duplicate-candidates/   # 疑似重複交易（同來源+類型+金額+日期±2天，常態消費≥4次略過）
 │   │   ├── import/                 # CSV 匯入
 │   │   ├── import-pdf/             # PDF 匯入（KGI 銀行）
 │   │   ├── annual-report/          # 年度財報（?year=YYYY）
@@ -255,6 +254,7 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] 交易分割（一筆拆成多分類，如：超市 $500 → 飲食 $300 + 日用品 $200）
 - [x] 資料備份 / 匯出（全部交易匯出 JSON，交易記錄頁「↓ 備份」按鈕）
 - [x] 疑似重複交易審核介面（工具 → 重複審核，側邊選刪除或保留兩筆）
+- [x] 交易頁重複偵測橫幅 + 新增時即時警示（同來源同金額 2 天內，常態消費 ≥4 次/30 天自動略過）
 - [x] 交易合併（批次選取 ≥2 筆後出現「⊕ 合併」按鈕，金額加總）
 - [x] 交易備註快速模板（新增記帳 modal 顯示模板，自動學習已輸入備註）
 - [x] 批次修改分類（已存在）
@@ -356,6 +356,31 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] Claude 批次「其他」分類清理：查出所有 category=「其他」交易，Claude 分析 note 批次建議分類，Dashboard 工具區顯示建議列表一鍵套用
 - [x] 消費性格 AI 報告：用 Claude 分析近 3 個月交易，生成個人化報告（消費時段分佈、衝動消費比例、高風險分類、行為建議 3 條），新 API `/api/ai-personality-report`，顯示在進階分析 Tab，可傳送 LINE
 - [x] **交易備注 AI 批次可讀化**：工具區新增「備注整理」，撈出 note 含英文且未手動編輯的交易，送 Claude API 批次建議中文可讀備注（如 `PAYPAL *ADOBE` → `Adobe 訂閱`），一鍵套用或逐筆確認
+- [x] 🔴 **AI 分類學習持久化**：新表 `CategoryRule { keyword, category, source?, hitCount, lastUsedAt }`，使用者修改交易分類時自動寫入規則（若 note 含 keyword → 套用 category），下次 LINE 記帳/CSV 匯入時優先比對規則，命中時 hitCount++；工具區可檢視/編輯/刪除規則
+
+### 資料管理擴充（🔴 高）
+- [x] 🔴 **快捷記帳一鍵組合**：分析近 30 天高頻交易（同 category+amount±10% 出現 ≥3 次），自動產生快捷鈕，顯示在交易頁頂端，點擊直接寫入；支援手動釘選/排序，存 localStorage
+- [x] 🔴 **轉帳主動配對**：新增交易後後端查近 3 天同金額反向交易，有則回傳 candidate；前端 toast 提示「這筆是不是轉帳？」一鍵確認，兩筆同時改為「轉帳」分類並互相關聯（`Transaction.transferPairId`）
+- ~~**群組分帳 / AA 制**~~ → 不需要
+- [ ] 🟡 **借貸往來追蹤**：新表 `PersonalDebt { counterparty, direction(owed_to_me/i_owe), amount, note, createdAt, settledAt }`，與正式 transactions 分開但可一鍵轉成正式入帳；Dashboard 工具區新分頁
+- ~~**電子發票載具整合**~~ → 個人無法申請官方 API（需 ISO 27001 認證），不做
+
+### Gamification（🟢 低）
+- [ ] 🟢 **記帳連續天數**：新表 `UserStreak { currentStreak, longestStreak, lastRecordDate }`，每次記帳後檢查是否續日；Dashboard Header 顯示「🔥 N 天」徽章，里程碑（7/30/100 天）解鎖獎章；配合 kogao LINE Bot 早上推播「昨天還沒記帳喔！」
+- [ ] 🟢 **支出購買力換算**：新增交易後 hover 金額顯示「= 工作 X 分鐘」，根據設定中的時薪換算；設定頁加入「我的時薪」欄位
+- [ ] 🟢 **位置記帳**：手機 PWA 用 Geolocation API 取得 GPS，比對 Google Places API 自動帶入店家名稱到 note 欄位
+
+### 聽力追蹤（🟡 中）
+> 每 2-3 週回診，追蹤聽力變化趨勢
+
+- [ ] 新增 `HearingTest` 模型：`testDate`, `imageUrl`（Base64 原始照片）, `notes`, `nextVisit`
+- [ ] 新增 `HearingResult` 模型：`hearingTestId`, `ear`(left/right), `type`(air/bone), `frequency`, `thresholdDb`
+- [ ] `GET /api/hearing` — 列出所有測試（含 results）
+- [ ] `POST /api/hearing` — 新增測試 + results（由 LINE Bot OCR 呼叫）
+- [ ] `GET /api/hearing/[id]` — 單筆詳情
+- [ ] `PATCH /api/hearing/[id]` — 修正數值
+- [ ] `DELETE /api/hearing/[id]` — 刪除測試
+- [ ] `GET /api/hearing/trends` — 各頻率 dB 隨時間變化趨勢資料
 
 ### 資料分析強化（🟡 中）
 - [x] 收支年同期比較（YoY）：在月份對比卡或進階分析新增「今年 N 月 vs 去年 N 月」，追蹤長期財務進步
@@ -367,6 +392,18 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] 貸款提前還款模擬器：負債管理頁加「每月多還 X 元」滑桿，即時試算提前還清月數與節省利息（對凱基 16% 特別有用）（整合進 DebtOptimizer 還債優化，滑桿即時對比還清時間與節省利息，含 CP 值顯示）
 - [x] 財務里程碑時間軸：把研究所入學（2028/09）、FIRE 達成年份、各儲蓄目標預計達成日統一顯示在橫向時間軸，串接 goals / get_fire_progress / get_grad_school_plan，新 component `MilestoneTimeline.tsx`，嵌入進階分析 Tab
 
+
+### Notion 全自動整合（🟡 中）
+> 全部為寫入型整合，不需手動維護 Notion，自動累積歷史紀錄
+
+- [x] 🟡 **AI 月報自動歸檔**：`POST /api/cron/monthly-report`，同時處理異常支出寫 Notion 警示 + 訂閱漲價標註
+- [x] 🟡 **AI 年報自動歸檔**：`POST /api/cron/annual-report`，每年 1/1 觸發
+- [x] 🟡 **異常支出自動寫 Notion 警示頁**：整合在 monthly-report cron，命中時 append 到「財務警示」
+- [x] 🟡 **訂閱漲價自動標註**：整合在 monthly-report cron，比對後 append 到 Notion 訂閱 DB
+- [x] 🟡 **目標達成里程碑自動歸檔**：PATCH `/api/goals/[id]` 偵測 savedAmount 剛達標即觸發，建 Notion 紀念頁
+- [ ] 🟢 **消費性格 AI 報告每季自動歸檔**：每季 1 號（1/4/7/10 月）自動執行消費性格分析並寫到 Notion，可觀察性格演變史
+
+---
 
 ## 考慮移除 / 降權的功能
 

@@ -154,6 +154,115 @@ export async function syncTransactionToNotion(tx: TransactionRecord): Promise<vo
   }
 }
 
+// ── 異常支出警示 ──────────────────────────────────────────────────────────────
+
+export async function appendAnomalyAlert(
+  month: string,
+  anomalies: { category: string; current: number; mean: number; zscore: number }[],
+): Promise<void> {
+  if (!process.env.NOTION_TOKEN || !process.env.NOTION_ANOMALY_PAGE_ID || anomalies.length === 0) return;
+  const notion = getNotionClient();
+  const fmt = (n: number) => `NT$${Math.round(n).toLocaleString("zh-TW")}`;
+  try {
+    await (notion.blocks.children.append as (args: unknown) => Promise<unknown>)({
+      block_id: process.env.NOTION_ANOMALY_PAGE_ID,
+      children: [
+        {
+          object: "block", type: "heading_3",
+          heading_3: { rich_text: [{ type: "text", text: { content: `⚠️ ${month} 異常支出` } }] },
+        },
+        ...anomalies.map(a => ({
+          object: "block", type: "bulleted_list_item",
+          bulleted_list_item: {
+            rich_text: [{
+              type: "text",
+              text: { content: `${a.category}：${fmt(a.current)}（平均 ${fmt(a.mean)}，z-score ${a.zscore.toFixed(1)}）` },
+            }],
+          },
+        })),
+        { object: "block", type: "paragraph", paragraph: { rich_text: [] } },
+      ],
+    });
+  } catch (e) {
+    console.error("[notion] appendAnomalyAlert error:", e);
+  }
+}
+
+// ── 目標達成里程碑歸檔 ────────────────────────────────────────────────────────
+
+export async function archiveGoalMilestone(data: {
+  name:          string;
+  emoji:         string;
+  targetAmount:  number;
+  savedAmount:   number;
+  monthsToReach: number;
+  note:          string;
+}): Promise<void> {
+  if (!process.env.NOTION_TOKEN || !process.env.NOTION_MILESTONES_PAGE_ID) return;
+  const notion = getNotionClient();
+  const fmt = (n: number) => `NT$${Math.round(n).toLocaleString("zh-TW")}`;
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    await notion.pages.create({
+      parent: { page_id: process.env.NOTION_MILESTONES_PAGE_ID },
+      icon:   { type: "emoji", emoji: data.emoji as never },
+      properties: {
+        title: { title: [{ text: { content: `🎉 達成：${data.name}` } }] },
+      },
+      children: [
+        {
+          object: "block", type: "callout",
+          callout: {
+            icon: { type: "emoji", emoji: "🎯" },
+            color: "green_background",
+            rich_text: [{
+              type: "text",
+              text: { content: `目標金額 ${fmt(data.targetAmount)}　達成日期 ${today}　耗時 ${data.monthsToReach} 個月` },
+            }],
+          },
+        },
+        ...(data.note ? [{
+          object: "block" as const, type: "paragraph" as const,
+          paragraph: { rich_text: [{ type: "text" as const, text: { content: data.note } }] },
+        }] : []),
+      ],
+    } as Parameters<typeof notion.pages.create>[0]);
+  } catch (e) {
+    console.error("[notion] archiveGoalMilestone error:", e);
+  }
+}
+
+// ── 訂閱漲價標註 ──────────────────────────────────────────────────────────────
+
+export async function appendSubscriptionPriceChange(
+  subPageId: string,
+  month:     string,
+  oldFee:    number,
+  newAmount: number,
+): Promise<void> {
+  if (!process.env.NOTION_TOKEN) return;
+  const notion = getNotionClient();
+  const diff = Math.round(newAmount - oldFee);
+  const sign = diff > 0 ? "+" : "";
+  try {
+    await (notion.blocks.children.append as (args: unknown) => Promise<unknown>)({
+      block_id: subPageId,
+      children: [{
+        object: "block", type: "bulleted_list_item",
+        bulleted_list_item: {
+          rich_text: [{
+            type: "text",
+            text: { content: `${month} 漲價 NT$${sign}${diff}（原 NT$${Math.round(oldFee)}，實扣 NT$${Math.round(newAmount)}）` },
+            annotations: { color: "red" },
+          }],
+        },
+      }],
+    });
+  } catch (e) {
+    console.error("[notion] appendSubscriptionPriceChange error:", e);
+  }
+}
+
 export interface WorthSnapshot {
   totalAssets: number;
   totalDebt: number;
