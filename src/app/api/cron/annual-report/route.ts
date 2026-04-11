@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { Client } from "@notionhq/client";
 import { logAudit } from "@/lib/audit";
+import { taipeiTodayAsUTC } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const year = new Date().getFullYear() - 1;
+  const year = taipeiTodayAsUTC().getUTCFullYear() - 1;
 
   try {
     const user = await prisma.user.findFirst({ where: { lineUserId: "dashboard_user" } });
