@@ -4,6 +4,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { PrismaClient } from "@prisma/client";
+import { taipeiToday, taipeiMonth, taipeiTodayAsUTC } from "../lib/time";
 
 const prisma = new PrismaClient();
 
@@ -329,8 +330,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   try {
     // ── get_summary ──────────────────────────────────────────────────────────
     if (name === "get_summary") {
-      const now   = new Date();
-      const month = (a.month as string) ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const month = (a.month as string) ?? taipeiMonth();
       const [y, m] = month.split("-").map(Number);
       const start  = new Date(y, m - 1, 1);
       const end    = new Date(y, m, 1);
@@ -415,7 +415,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           balance: Number(b.balance),
           asOfDate: b.asOfDate.toISOString().split("T")[0],
         })),
-        { source: "cash", balance: cashBalance, asOfDate: new Date().toISOString().split("T")[0] },
+        { source: "cash", balance: cashBalance, asOfDate: taipeiToday() },
       ];
 
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
@@ -424,8 +424,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     // ── get_budgets ──────────────────────────────────────────────────────────
     if (name === "get_budgets") {
       const user  = await getDashUser();
-      const now   = new Date();
-      const month = (a.month as string) ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const month = (a.month as string) ?? taipeiMonth();
       const [y, m] = month.split("-").map(Number);
       const start  = new Date(y, m - 1, 1);
       const end    = new Date(y, m, 1);
@@ -486,15 +485,15 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         include: { payments: { orderBy: { paymentDate: "desc" }, take: 1 } },
       });
 
-      const today    = new Date();
-      const todayDay = today.getDate();
+      const today    = taipeiTodayAsUTC();
+      const todayDay = today.getUTCDate();
 
       const nextPayment = (paymentDay: number | null): { daysUntilPayment: number; nextPaymentDate: string } | null => {
         if (paymentDay === null) return null;
         const d = todayDay <= paymentDay
-          ? new Date(today.getFullYear(), today.getMonth(), paymentDay)
-          : new Date(today.getFullYear(), today.getMonth() + 1, paymentDay);
-        const days = Math.round((d.getTime() - new Date(today.getFullYear(), today.getMonth(), todayDay).getTime()) / 86400000);
+          ? new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), paymentDay))
+          : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, paymentDay));
+        const days = Math.round((d.getTime() - today.getTime()) / 86400000);
         return { daysUntilPayment: days, nextPaymentDate: d.toISOString().split("T")[0] };
       };
 
@@ -518,8 +517,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
     // ── get_income_breakdown ─────────────────────────────────────────────────
     if (name === "get_income_breakdown") {
-      const now   = new Date();
-      const month = (a.month as string) ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const month = (a.month as string) ?? taipeiMonth();
       const [y, m] = month.split("-").map(Number);
       const start  = new Date(y, m - 1, 1);
       const end    = new Date(y, m, 1);
@@ -560,18 +558,18 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
     // ── get_weekly_report ────────────────────────────────────────────────────
     if (name === "get_weekly_report") {
-      const now      = new Date();
-      const todayDay = now.getDate();
+      const now      = taipeiTodayAsUTC();
+      const todayDay = now.getUTCDate();
 
-      // 本週起訖（週一 ~ 今天）
-      const dayOfWeek  = now.getDay() === 0 ? 6 : now.getDay() - 1; // 0=週一
-      const weekStart  = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
-      const weekEnd    = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      // 本週起訖（週一 ~ 今天），以台灣時區為準
+      const dayOfWeek  = now.getUTCDay() === 0 ? 6 : now.getUTCDay() - 1; // 0=週一
+      const weekStart  = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dayOfWeek));
+      const weekEnd    = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
 
       // 本月起訖
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      const monthEnd   = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+      const currentMonth = taipeiMonth();
 
       const [weekTxs, monthTxs, loans, budgets, monthSpending] = await Promise.all([
         prisma.transaction.findMany({
@@ -620,10 +618,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           const pd   = l.paymentDay!;
           const days = todayDay <= pd
             ? pd - todayDay
-            : new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - todayDay + pd;
+            : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate() - todayDay + pd;
           const date = todayDay <= pd
-            ? new Date(now.getFullYear(), now.getMonth(), pd)
-            : new Date(now.getFullYear(), now.getMonth() + 1, pd);
+            ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), pd))
+            : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, pd));
           return { name: l.lender, paymentDay: pd, daysUntil: days, date: date.toISOString().split("T")[0] };
         })
         .filter(l => l.daysUntil <= 7)
@@ -641,8 +639,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         content: [{
           type: "text",
           text: JSON.stringify({
-            reportDate:  now.toISOString().split("T")[0],
-            weekRange:   { from: weekStart.toISOString().split("T")[0], to: now.toISOString().split("T")[0] },
+            reportDate:  taipeiToday(),
+            weekRange:   { from: weekStart.toISOString().split("T")[0], to: taipeiToday() },
             week: {
               income:  weekIncome,
               expense: weekExpense,
@@ -684,14 +682,14 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     // ── get_spending_trend ───────────────────────────────────────────────────
     if (name === "get_spending_trend") {
       const monthCount = Number(a.months ?? 3);
-      const now        = new Date();
+      const now        = taipeiTodayAsUTC();
       const results: { month: string; income: number; expense: number; net: number; categories: Record<string, number> }[] = [];
 
       for (let i = monthCount - 1; i >= 0; i--) {
-        const d     = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const start = new Date(d.getFullYear(), d.getMonth(), 1);
-        const end   = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-        const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        const d     = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+        const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+        const end   = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+        const month = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 
         const where: Record<string, unknown> = {
           date:     { gte: start, lt: end },
@@ -747,7 +745,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         include: { payments: { orderBy: { paymentDate: "desc" }, take: 1 } },
       });
 
-      const today = new Date();
+      const today = taipeiTodayAsUTC();
       const items = loans.map(l => {
         const principal      = Number(l.remainingPrincipal);
         const annualRate     = Number(l.interestRate);
@@ -758,7 +756,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const monthlyPrincipal = lastPayment ? Number(lastPayment.principalPaid) : 0;
         const monthsLeft     = monthlyPrincipal > 0 ? Math.ceil(principal / monthlyPrincipal) : null;
         const payoffDate     = monthsLeft !== null
-          ? new Date(today.getFullYear(), today.getMonth() + monthsLeft, 1).toISOString().split("T")[0]
+          ? new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + monthsLeft, 1)).toISOString().split("T")[0]
           : null;
 
         return {
@@ -817,16 +815,16 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
     // ── get_cashflow_forecast ────────────────────────────────────────────────
     if (name === "get_cashflow_forecast") {
-      const now        = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const now        = taipeiTodayAsUTC();
+      const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      const monthEnd   = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
       const totalDays  = Math.round((monthEnd.getTime() - monthStart.getTime()) / 86400000);
-      const daysElapsed = now.getDate();
+      const daysElapsed = now.getUTCDate();
       const daysRemaining = totalDays - daysElapsed;
 
       const [txs, balances, loans] = await Promise.all([
         prisma.transaction.findMany({
-          where: { date: { gte: monthStart, lt: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) }, category: { not: "轉帳" } },
+          where: { date: { gte: monthStart, lt: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)) }, category: { not: "轉帳" } },
         }),
         prisma.bankBalance.findMany({ where: { source: { not: "cash" } } }),
         prisma.loan.findMany({ where: { status: "active" } }),
@@ -839,11 +837,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
       // 本月尚未到期的貸款繳款日
       const upcomingPayments = loans
-        .filter(l => l.paymentDay !== null && l.paymentDay > now.getDate())
+        .filter(l => l.paymentDay !== null && l.paymentDay > now.getUTCDate())
         .map(l => ({
           name:        l.name,
           paymentDay:  l.paymentDay,
-          daysUntil:   l.paymentDay! - now.getDate(),
+          daysUntil:   l.paymentDay! - now.getUTCDate(),
           monthlyInterest: Math.round(Number(l.remainingPrincipal) * Number(l.interestRate) / 100 / 12),
         }));
 
@@ -855,8 +853,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         content: [{
           type: "text",
           text: JSON.stringify({
-            month:            `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
-            today:            now.toISOString().split("T")[0],
+            month:            taipeiMonth(),
+            today:            taipeiToday(),
             daysElapsed,
             daysRemaining,
             currentIncome,
@@ -878,9 +876,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       const user = await getDashUser();
       if (!user) return { content: [{ type: "text", text: "找不到用戶" }], isError: true };
 
-      const now   = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      const now   = taipeiTodayAsUTC();
+      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      const end   = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
 
       const txs = await prisma.transaction.findMany({
         where: {
@@ -907,7 +905,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         content: [{
           type: "text",
           text: JSON.stringify({
-            date:          now.toISOString().split("T")[0],
+            date:          taipeiToday(),
             totalExpense:  Math.round(total),
             count:         txs.length,
             topCategories,
@@ -931,14 +929,14 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
       const category   = a.category as string;
       const monthCount = Number(a.months ?? 6);
-      const now        = new Date();
+      const now        = taipeiTodayAsUTC();
       const monthly: { month: string; amount: number; count: number }[] = [];
 
       for (let i = monthCount - 1; i >= 0; i--) {
-        const d     = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const start = new Date(d.getFullYear(), d.getMonth(), 1);
-        const end   = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-        const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        const d     = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+        const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+        const end   = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+        const month = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 
         const txs = await prisma.transaction.findMany({
           where: {
@@ -999,8 +997,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       });
 
       // 計算近 6 個月月均淨儲蓄（用於推算達標日）
-      const now = new Date();
-      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+      const now = taipeiTodayAsUTC();
+      const sixMonthsAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 6, 1));
       const recentTxs = await prisma.transaction.findMany({
         where: {
           userId:   user.id,
@@ -1025,7 +1023,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           estimatedDate = g.deadline.toISOString().split("T")[0];
         } else if (monthlyNetSaving > 0 && gap > 0) {
           const monthsNeeded = Math.ceil(gap / monthlyNetSaving);
-          const est = new Date(now.getFullYear(), now.getMonth() + monthsNeeded, 1);
+          const est = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + monthsNeeded, 1));
           estimatedDate = est.toISOString().split("T")[0];
         }
 
@@ -1070,11 +1068,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       const duration = (a.duration as number | undefined) ?? 24;
       const totalTarget = tuition + living * duration;
 
-      const enrollmentDate = new Date(2028, 8, 1); // 2028-09-01
-      const now = new Date();
+      const enrollmentDate = new Date(Date.UTC(2028, 8, 1)); // 2028-09-01
+      const now = taipeiTodayAsUTC();
       const monthsLeft = Math.max(0,
-        (enrollmentDate.getFullYear() - now.getFullYear()) * 12
-        + (enrollmentDate.getMonth() - now.getMonth())
+        (enrollmentDate.getUTCFullYear() - now.getUTCFullYear()) * 12
+        + (enrollmentDate.getUTCMonth() - now.getUTCMonth())
       );
       const daysLeft = Math.max(0, Math.floor((enrollmentDate.getTime() - now.getTime()) / 86400000));
 
@@ -1087,7 +1085,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         currentSavings = balances.reduce((s, b) => s + Number(b.balance), 0);
 
         // 近 3 個月月均淨儲蓄
-        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+        const threeMonthsAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, 1));
         const recentTxs = await prisma.transaction.findMany({
           where: { userId: user.id, date: { gte: threeMonthsAgo }, category: { not: "轉帳" } },
           select: { type: true, amount: true },
@@ -1138,8 +1136,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
     // ── get_budget_alert ─────────────────────────────────────────────────────
     if (name === "get_budget_alert") {
-      const now   = new Date();
-      const month = (a.month as string) ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const month = (a.month as string) ?? taipeiMonth();
       const [y, m] = month.split("-").map(Number);
       const start  = new Date(y, m - 1, 1);
       const end    = new Date(y, m, 1);
@@ -1234,7 +1231,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         include: { bills: { orderBy: { dueDate: "desc" }, take: 3 } },
       });
 
-      const today = new Date();
+      const today = taipeiTodayAsUTC();
       const result = cards.map(c => {
         const unpaidBills = c.bills.filter(b => b.status !== "paid");
         const totalUnpaid = unpaidBills.reduce((s, b) => s + (Number(b.totalAmount) - Number(b.paidAmount)), 0);
@@ -1291,8 +1288,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
     // ── get_health_score ─────────────────────────────────────────────────────
     if (name === "get_health_score") {
-      const now   = new Date();
-      const month = (a.month as string) ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const month = (a.month as string) ?? taipeiMonth();
       const [y, m] = month.split("-").map(Number);
       const start  = new Date(y, m - 1, 1);
       const end    = new Date(y, m, 1);
@@ -1365,8 +1361,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       let currentAssets  = 0;
 
       if (user) {
-        const now = new Date();
-        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+        const now = taipeiTodayAsUTC();
+        const threeMonthsAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, 1));
 
         const [balances, loans, ccBills, recentTxs] = await Promise.all([
           prisma.bankBalance.findMany({ where: { userId: user.id, source: { not: "cash" } } }),
@@ -1396,8 +1392,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       // 取近 3 個月月均淨儲蓄作為每月儲蓄
       let monthlySaving = 0;
       if (user) {
-        const now = new Date();
-        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+        const now = taipeiTodayAsUTC();
+        const threeMonthsAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, 1));
         const txs = await prisma.transaction.findMany({
           where: { userId: user.id, date: { gte: threeMonthsAgo }, category: { not: "轉帳" } },
           select: { type: true, amount: true },
@@ -1421,8 +1417,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         yearsToFire = months < maxMonths ? Math.round(months / 12 * 10) / 10 : null;
       }
 
-      const now = new Date();
-      const fireYear = yearsToFire !== null ? now.getFullYear() + Math.ceil(yearsToFire) : null;
+      const now = taipeiTodayAsUTC();
+      const fireYear = yearsToFire !== null ? now.getUTCFullYear() + Math.ceil(yearsToFire) : null;
 
       return {
         content: [{
@@ -1536,10 +1532,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       const user = await getDashUser();
       if (!user) return { content: [{ type: "text", text: "找不到用戶" }], isError: true };
 
-      const now   = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const now   = taipeiTodayAsUTC();
+      const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      const monthEnd   = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+      const currentMonth = taipeiMonth();
 
       const [budgets, spending, cards, loans, goals] = await Promise.all([
         prisma.budget.findMany({ where: { userId: user.id } }),
@@ -1579,8 +1575,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       // 貸款繳款日警示（7 天內）
       for (const l of loans.filter(l => l.paymentDay !== null)) {
         const pd   = l.paymentDay!;
-        const todayDate = now.getDate();
-        const daysUntil = todayDate <= pd ? pd - todayDate : new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - todayDate + pd;
+        const todayDate = now.getUTCDate();
+        const daysUntil = todayDate <= pd ? pd - todayDate : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate() - todayDate + pd;
         if (daysUntil <= 7) {
           const interest = Math.round(Number(l.remainingPrincipal) * Number(l.interestRate) / 100 / 12);
           notifications.push({ type: "loan", level: daysUntil <= 2 ? "danger" : "warning", title: `${l.name} 貸款繳款日`, detail: `${daysUntil === 0 ? "今天" : `${daysUntil} 天後`}到期，每月利息約 NT$${interest.toLocaleString()}` });
@@ -1607,7 +1603,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         content: [{
           type: "text",
           text: JSON.stringify({
-            date:   now.toISOString().split("T")[0],
+            date:   taipeiToday(),
             month:  currentMonth,
             total:  notifications.length,
             danger: notifications.filter(n => n.level === "danger").length,
@@ -1621,10 +1617,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
     // ── get_annual_report ────────────────────────────────────────────────────
     if (name === "get_annual_report") {
-      const now  = new Date();
-      const year = (a.year as number | undefined) ?? now.getFullYear();
-      const yearStart = new Date(year, 0, 1);
-      const yearEnd   = new Date(year + 1, 0, 1);
+      const now  = taipeiTodayAsUTC();
+      const year = (a.year as number | undefined) ?? now.getUTCFullYear();
+      const yearStart = new Date(Date.UTC(year, 0, 1));
+      const yearEnd   = new Date(Date.UTC(year + 1, 0, 1));
 
       const txs = await prisma.transaction.findMany({
         where: { date: { gte: yearStart, lt: yearEnd }, category: { not: "轉帳" } },
@@ -1760,8 +1756,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
       const principalPaid  = totalPaid - interestPaid;
       const newRemaining   = Math.max(0, Number(loan.remainingPrincipal) - principalPaid);
-      const date           = paymentDate ? new Date(paymentDate) : new Date();
-      date.setHours(0, 0, 0, 0);
+      // 日期一律以「台灣當日 UTC 午夜」儲存
+      const dateYmd        = paymentDate ?? taipeiToday();
+      const date           = new Date(`${dateYmd}T00:00:00Z`);
 
       const [payment] = await prisma.$transaction([
         prisma.loanPayment.create({
@@ -1806,8 +1803,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
     // ── get_anomaly_detection ─────────────────────────────────────────────────
     if (name === "get_anomaly_detection") {
-      const now      = new Date();
-      const month    = (a.month as string | undefined) ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const month    = (a.month as string | undefined) ?? taipeiMonth();
       const lookback = Math.min(6, Math.max(2, Math.round((a.lookback as number | undefined) ?? 4)));
       const [y, m]   = month.split("-").map(Number);
 
@@ -1877,8 +1873,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       const user = await getDashUser();
       if (!user) return { content: [{ type: "text", text: "找不到使用者" }], isError: true };
 
-      const date = dateStr ? new Date(dateStr) : new Date();
-      date.setHours(0, 0, 0, 0);
+      // 日期一律以「台灣當日 UTC 午夜」儲存
+      const dateYmd = dateStr ?? taipeiToday();
+      const date    = new Date(`${dateYmd}T00:00:00Z`);
 
       const tx = await prisma.transaction.create({
         data: { userId: user.id, type, amount, category, note, date, source: "mcp" },
