@@ -22,3 +22,6 @@ CREATE UNIQUE INDEX "MealBudget_userId_mealType_key" ON "MealBudget"("userId", "
 
 -- AddForeignKey
 ALTER TABLE "MealBudget" ADD CONSTRAINT "MealBudget_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- CreateIndex
+CREATE INDEX "Transaction_userId_date_mealType_idx" ON "Transaction"("userId", "date", "mealType");

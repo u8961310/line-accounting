@@ -95,6 +95,7 @@ model Transaction {
   @@unique([userId, date, amount, source])
   @@index([userId])
   @@index([date])
+  @@index([userId, date, mealType])
 }
 
 model Loan {
