@@ -10,6 +10,7 @@ import {
 import CsvImport from "@/components/CsvImport";
 import LoanManager from "@/components/LoanManager";
 import BudgetManager from "@/components/BudgetManager";
+import MealBudgetManager from "@/components/MealBudgetManager";
 import FixedExpenseManager from "@/components/FixedExpenseManager";
 import DebtOptimizer from "@/components/DebtOptimizer";
 import AnnualReport from "@/components/AnnualReport";
@@ -4866,7 +4867,14 @@ export default function DashboardPage() {
         )}
 
         {/* ── Budget ── */}
-        {activeTab === "budget" && <BudgetManager extraCategories={customExpenseCats} />}
+        {activeTab === "budget" && (
+          <>
+            <div className="mb-4">
+              <MealBudgetManager />
+            </div>
+            <BudgetManager extraCategories={customExpenseCats} />
+          </>
+        )}
 
         {/* ── Subscriptions ── */}
         {activeTab === "subscriptions" && <SubscriptionDetector />}
