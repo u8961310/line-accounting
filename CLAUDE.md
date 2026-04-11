@@ -260,24 +260,9 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 
 ---
 
-## TODO（待做）
+## TODO
 
-### UI / UX 優化
-- [ ] 🔥 **通知中心快捷按鈕**：預算超標顯示「調整預算」、帳單到期顯示「標記已繳」
-- [ ] 🔥 **圖表卡片折疊**：不常看的卡片可收起，減少滾動
-- [ ] 🔥 **健康分數移到 Header**：在 🔥streak 徽章旁加財務健康分數徽章
-- [ ] 🔥 **異常支出卡移到首頁圖表 tab**：`/api/anomaly-detection` 已有，不用進進階分析才看到
-- [ ] 🟡 **圖表 loading skeleton**：spinner 改骨架屏，減少版面跳動
-- [ ] 🟡 **LINE 警報頻率上限**：同天多張帳單到期合併推播
-- [ ] 🟡 **消費性格報告入口**：圖表頁底部加小卡片入口，不用點 Tab 才找到
-- [ ] 🟢 **淨資產趨勢折線圖**：快照資料已存在，加資產/負債/淨值歷史走勢圖
-- [ ] 🟢 **同月 YoY 比較卡**：圖表頁加「與去年同期」對比卡
-
-### 聽力追蹤（🟡 中）
-> 跨 line-accounting + kogao + kogao-os 三 repo，需統一規劃
-
-- [ ] `HearingTest` + `HearingResult` Prisma 模型
-- [ ] `GET/POST /api/hearing`、`GET/PATCH/DELETE /api/hearing/[id]`
-- [ ] `GET /api/hearing/trends` — 各頻率 dB 趨勢
-- [ ] kogao OCR 流程解析聽力報告圖
-- [ ] kogao-os UI 顯示趨勢圖（mock 已完成）
+待辦清單集中在記憶檔：
+- `project_line_accounting_todo.md` — 本 repo 的 UI/UX 與功能待辦
+- `project_hearing_tracker.md` — 聽力追蹤（跨 repo）
+- `project_life_tracker_plan.md` — 習慣/日記/健康/人際 Phase 2-5（跨 repo）

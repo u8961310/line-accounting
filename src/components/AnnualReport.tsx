@@ -5,7 +5,6 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
 } from "recharts";
-import { DEMO_ANNUAL_REPORT } from "@/lib/demo-data";
 import type { AnnualReportResponse } from "@/app/api/annual-report/route";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -79,25 +78,18 @@ function ChartTooltip({ active, payload, label }: ChartTooltipProps) {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export default function AnnualReport({ isDemo }: { isDemo: boolean }) {
+export default function AnnualReport() {
   const [data,    setData]    = useState<AnnualReportResponse | null>(null);
   const [year,    setYear]    = useState<number>(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
 
   const load = useCallback((y: number) => {
     setLoading(true);
-    if (isDemo) {
-      // Mock any year request with demo data, adjust year label
-      const demo = { ...DEMO_ANNUAL_REPORT, year: y } as AnnualReportResponse;
-      setData(demo);
-      setLoading(false);
-      return;
-    }
     fetch(`/api/annual-report?year=${y}`)
       .then(r => r.json())
       .then((d: AnnualReportResponse) => setData(d))
       .finally(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   useEffect(() => {
     // default: previous year if we have data, else current year

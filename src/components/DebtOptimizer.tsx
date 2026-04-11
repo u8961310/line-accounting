@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { DEMO_LOANS_RAW, DEMO_CREDIT_CARDS_RAW } from "@/lib/demo-data";
-
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface DebtEntry {
@@ -318,39 +316,13 @@ function PrepaySimulator({ debts }: { debts: DebtEntry[] }) {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export default function DebtOptimizer({ isDemo }: { isDemo: boolean }) {
+export default function DebtOptimizer() {
   const [debts,   setDebts]   = useState<DebtEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [budget,  setBudget]  = useState("");
   const [strategy, setStrategy] = useState<"recommended" | "snowball" | "avalanche">("recommended");
 
   useEffect(() => {
-    if (isDemo) {
-      const loans: DebtEntry[] = (DEMO_LOANS_RAW as RawLoan[])
-        .filter(l => l.status === "active")
-        .map(l => ({
-          id: l.id, name: l.name, type: "loan" as const,
-          balance:    parseFloat(String(l.remainingPrincipal)),
-          annualRate: parseFloat(String(l.interestRate)),
-          minMonthly: l.payments?.[0] ? parseFloat(String(l.payments[0].totalPaid)) : 0,
-        }));
-      const ccs: DebtEntry[] = (DEMO_CREDIT_CARDS_RAW as RawCC[])
-        .filter(c => parseFloat(String(c.currentBalance)) > 0)
-        .map(c => {
-          const bal = parseFloat(String(c.currentBalance));
-          return {
-            id: c.id, name: c.name, type: "cc" as const,
-            balance: bal, annualRate: 18,
-            minMonthly: c.bills?.[0]?.minimumPayment ? parseFloat(String(c.bills[0].minimumPayment)) : Math.ceil(bal * 0.02),
-          };
-        });
-      const all = [...loans, ...ccs];
-      setDebts(all);
-      setBudget(String(all.reduce((s, d) => s + d.minMonthly, 0) + 2000));
-      setLoading(false);
-      return;
-    }
-
     Promise.all([
       fetch("/api/loans").then(r => r.json()),
       fetch("/api/credit-cards").then(r => r.json()),
@@ -377,7 +349,7 @@ export default function DebtOptimizer({ isDemo }: { isDemo: boolean }) {
       setDebts(all);
       if (all.length > 0) setBudget(String(all.reduce((s, d) => s + d.minMonthly, 0) + 2000));
     }).finally(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   const totalDebt  = debts.reduce((s, d) => s + d.balance, 0);
   const totalMin   = debts.reduce((s, d) => s + d.minMonthly, 0);

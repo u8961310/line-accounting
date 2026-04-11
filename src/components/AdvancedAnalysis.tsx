@@ -6,10 +6,6 @@ import {
   ResponsiveContainer, ReferenceLine, Cell,
   AreaChart, Area,
 } from "recharts";
-import {
-  DEMO_INCOME_12, DEMO_ACCOUNT_FLOW, DEMO_FIXED_EXPENSES,
-  DEMO_SUMMARY, DEMO_BUDGETS, DEMO_BALANCES,
-} from "@/lib/demo-data";
 import type { AccountFlowResponse } from "@/app/api/account-flow/route";
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
@@ -86,15 +82,14 @@ function ChartTip({ active, payload, label }: { active?: boolean; payload?: { va
 // 1. 退休金試算
 // ══════════════════════════════════════════════════════════════════════════
 
-export function RetirementCalc({ isDemo }: { isDemo: boolean }) {
+export function RetirementCalc() {
   const [target,   setTarget]   = useState("20000000");
-  const [current,  setCurrent]  = useState("149280");   // demo: total assets
+  const [current,  setCurrent]  = useState("0");
   const [monthly,  setMonthly]  = useState("10000");
   const [rate,     setRate]     = useState("5");
 
   // load current savings from balances once
   useEffect(() => {
-    if (isDemo) return;
     fetch("/api/balances")
       .then(r => r.json())
       .then((b: { source: string; balance: number }[]) => {
@@ -102,7 +97,7 @@ export function RetirementCalc({ isDemo }: { isDemo: boolean }) {
         if (total > 0) setCurrent(String(Math.round(total)));
       })
       .catch(() => {/* ignore */});
-  }, [isDemo]);
+  }, []);
 
   const targetN  = parseFloat(target)  || 0;
   const currentN = parseFloat(current) || 0;
@@ -191,14 +186,13 @@ export function RetirementCalc({ isDemo }: { isDemo: boolean }) {
 // 2. FIRE 財務獨立試算
 // ══════════════════════════════════════════════════════════════════════════
 
-export function FireCalc({ isDemo }: { isDemo: boolean }) {
-  const [assets,   setAssets]   = useState("149280");
+export function FireCalc() {
+  const [assets,   setAssets]   = useState("0");
   const [monthly,  setMonthly]  = useState("10000");
-  const [expense,  setExpense]  = useState("42000");  // avg monthly expense
+  const [expense,  setExpense]  = useState("0");
   const [rate,     setRate]     = useState("5");
 
   useEffect(() => {
-    if (isDemo) return;
     Promise.all([
       fetch("/api/balances").then(r => r.json()),
       fetch("/api/summary?months=6").then(r => r.json()),
@@ -211,7 +205,7 @@ export function FireCalc({ isDemo }: { isDemo: boolean }) {
         setExpense(String(Math.round(avgExpense)));
       }
     }).catch(() => {/* ignore */});
-  }, [isDemo]);
+  }, []);
 
   const assetsN  = parseFloat(assets)  || 0;
   const monthlyN = parseFloat(monthly) || 0;
@@ -313,17 +307,16 @@ export function FireCalc({ isDemo }: { isDemo: boolean }) {
 // 3. 收入穩定性分析
 // ══════════════════════════════════════════════════════════════════════════
 
-export function IncomeStability({ isDemo }: { isDemo: boolean }) {
+export function IncomeStability() {
   const [mdata,   setMdata]   = useState<{ month: string; income: number; expense: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (isDemo) { setMdata(DEMO_INCOME_12); setLoading(false); return; }
     fetch("/api/summary?months=12")
       .then(r => r.json())
       .then((d: { monthly: { month: string; income: number; expense: number }[] }) => setMdata(d.monthly ?? []))
       .finally(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   const incomes = mdata.map(m => m.income).filter(v => v > 0);
   const mean    = incomes.length ? incomes.reduce((a, b) => a + b, 0) / incomes.length : 0;
@@ -386,18 +379,12 @@ export function IncomeStability({ isDemo }: { isDemo: boolean }) {
 // 4. 固定 vs 變動支出比
 // ══════════════════════════════════════════════════════════════════════════
 
-export function ExpenseRatio({ isDemo }: { isDemo: boolean }) {
+export function ExpenseRatio() {
   const [mdata,    setMdata]    = useState<{ month: string; income: number; expense: number }[]>([]);
   const [fixedAmt, setFixedAmt] = useState(0);
   const [loading,  setLoading]  = useState(true);
 
   useEffect(() => {
-    if (isDemo) {
-      setMdata(DEMO_INCOME_12.slice(-6));
-      setFixedAmt(DEMO_FIXED_EXPENSES.fixedExpenses.reduce((s, f) => s + f.amount, 0));
-      setLoading(false);
-      return;
-    }
     Promise.all([
       fetch("/api/summary?months=6").then(r => r.json()),
       fetch("/api/fixed-expenses").then(r => r.json()),
@@ -408,7 +395,7 @@ export function ExpenseRatio({ isDemo }: { isDemo: boolean }) {
       setMdata(summary.monthly ?? []);
       setFixedAmt((fe.fixedExpenses ?? []).reduce((s, f) => s + f.amount, 0));
     }).finally(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   const chartData = mdata.filter(m => m.expense > 0).map(m => ({
     month:    m.month,
@@ -498,22 +485,17 @@ const SOURCE_LABELS: Record<string, string> = {
 
 const ACCOUNT_COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#14b8a6","#f97316"];
 
-export function AccountFlow({ isDemo }: { isDemo: boolean }) {
+export function AccountFlow() {
   const [data,    setData]    = useState<AccountFlowResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    if (isDemo) {
-      setData(DEMO_ACCOUNT_FLOW as AccountFlowResponse);
-      setLoading(false);
-      return;
-    }
     fetch("/api/account-flow?months=6")
       .then(r => r.json())
       .then((d: AccountFlowResponse) => setData(d))
       .finally(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -624,7 +606,7 @@ interface ForecastItem {
   alert:    "ok" | "warn" | "danger";
 }
 
-export function SpendingForecast({ isDemo }: { isDemo: boolean }) {
+export function SpendingForecast() {
   const [items,   setItems]   = useState<ForecastItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [dayNum,  setDayNum]  = useState(1);
@@ -636,29 +618,6 @@ export function SpendingForecast({ isDemo }: { isDemo: boolean }) {
     const dim   = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     setDayNum(day);
     setDaysInM(dim);
-
-    if (isDemo) {
-      // use demo summary byCategory + budgets
-      const budgetMap = new Map(DEMO_BUDGETS.budgets.map(b => [b.category, b.amount]));
-      const cats = DEMO_SUMMARY.byCategory.filter(c => c.type === "支出");
-      const built: ForecastItem[] = cats.map(c => {
-        const budget    = budgetMap.get(c.category) ?? 0;
-        const spent     = c.total;
-        const projected = day > 0 ? Math.round((spent / day) * dim) : spent;
-        const alert: ForecastItem["alert"] =
-          spent > budget && budget > 0 ? "danger"
-          : projected > budget && budget > 0 ? "warn"
-          : "ok";
-        return { category: c.category, spent, budget, projected, alert };
-      });
-      built.sort((a, b) => {
-        const order = { danger: 0, warn: 1, ok: 2 };
-        return order[a.alert] - order[b.alert] || b.projected - a.projected;
-      });
-      setItems(built);
-      setLoading(false);
-      return;
-    }
 
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     Promise.all([
@@ -685,7 +644,7 @@ export function SpendingForecast({ isDemo }: { isDemo: boolean }) {
       });
       setItems(built);
     }).finally(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   const dangerCount = items.filter(i => i.alert === "danger").length;
   const warnCount   = items.filter(i => i.alert === "warn").length;
@@ -791,7 +750,7 @@ interface CashflowMonth {
   net: number;
 }
 
-export function CashflowForecast({ isDemo }: { isDemo: boolean }) {
+export function CashflowForecast() {
   const [rows,    setRows]    = useState<CashflowMonth[]>([]);
   const [loading, setLoading] = useState(true);
   const [months,  setMonths]  = useState<3 | 6>(6);
@@ -829,12 +788,6 @@ export function CashflowForecast({ isDemo }: { isDemo: boolean }) {
   }, []);
 
   useEffect(() => {
-    if (isDemo) {
-      setRows(build(DEMO_SUMMARY.monthly, DEMO_BALANCES, DEMO_FIXED_EXPENSES.fixedExpenses, months));
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     const now = new Date();
     const monthPromises = Array.from({ length: 6 }, (_, i) => {
@@ -859,7 +812,7 @@ export function CashflowForecast({ isDemo }: { isDemo: boolean }) {
         months,
       ));
     }).finally(() => setLoading(false));
-  }, [isDemo, months, build]);
+  }, [months, build]);
 
   const minBalance      = Math.min(...rows.map(r => r.balance), 0);
   const maxBalance      = Math.max(...rows.map(r => r.balance));
@@ -990,24 +943,11 @@ interface MilestoneItem {
   pct?: number;
 }
 
-export function MilestoneTimeline({ isDemo }: { isDemo: boolean }) {
+export function MilestoneTimeline() {
   const [items,   setItems]   = useState<MilestoneItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (isDemo) {
-      const now = new Date();
-      setItems([
-        { id: "g1",   label: "緊急備用金",   emoji: "🛡️", date: new Date(now.getFullYear() + 1, 5, 1),   color: "#3B82F6", pct: 60 },
-        { id: "g2",   label: "換電腦",        emoji: "💻", date: new Date(now.getFullYear() + 2, 0, 1),   color: "#3B82F6", pct: 30 },
-        { id: "grad", label: "研究所入學",     emoji: "🎓", date: new Date(2028, 8, 1),                    color: "#8B5CF6", pct: 35 },
-        { id: "loan", label: "凱基貸款還清",   emoji: "🏦", date: new Date(now.getFullYear() + 5, 3, 1),  color: "#EF4444" },
-        { id: "fire", label: "FIRE 財務獨立",  emoji: "🔥", date: new Date(now.getFullYear() + 15, 0, 1), color: "#F59E0B", pct: 5 },
-      ]);
-      setLoading(false);
-      return;
-    }
-
     Promise.all([
       fetch("/api/goals").then(r => r.json()),
       fetch("/api/balances").then(r => r.json()),
@@ -1078,7 +1018,7 @@ export function MilestoneTimeline({ isDemo }: { isDemo: boolean }) {
       setItems(result);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   if (loading) return (
     <Card>
@@ -1256,13 +1196,12 @@ interface PersonalityReport {
   summary:         string;
 }
 
-export function PersonalityReport({ isDemo }: { isDemo: boolean }) {
+export function PersonalityReport() {
   const [report,  setReport]  = useState<PersonalityReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
 
   function generate() {
-    if (isDemo) { setError("Demo 模式不支援 AI 報告"); return; }
     setLoading(true);
     setError(null);
     fetch("/api/ai-personality-report")

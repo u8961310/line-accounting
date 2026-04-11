@@ -123,9 +123,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 // ── Main Component ─────────────────────────────────────────────────────────
 
 export default function SavingsPlan({
-  isDemo,
   onNavigate,
-}: { isDemo: boolean; onNavigate?: (tab: string) => void }) {
+}: { onNavigate?: (tab: string) => void }) {
 
   // ── Data state ──
   const [goals,    setGoals]    = useState<GoalItem[]>([]);
@@ -159,27 +158,6 @@ export default function SavingsPlan({
 
   // ── Fetch API ──
   const fetchAll = useCallback(async () => {
-    if (isDemo) {
-      setGoals([
-        { id: "g1", name: "研究所基金",   emoji: "🎓", savedAmount: 350000, targetAmount: 900000, linkedSource: "esun_bank" },
-        { id: "g2", name: "緊急預備金",   emoji: "🛡️", savedAmount: 80000,  targetAmount: 171000, linkedSource: null },
-      ]);
-      setBalances([{ source: "esun_bank", balance: 350000 }, { source: "mega_bank", balance: 30041 }]);
-      setCurrentMonthIncome(25904); setAvgMonthlyIncome(75000); setAvgMonthlyExpense(57000);
-      setTotalFixedExpenses(30000); setTotalLoanMonthly(13000); setTotalBudget(15000);
-      setBudgetsDetail([
-        { category: "飲食", amount: 8000, effectiveAmount: 8000, spent: 4200 },
-        { category: "交通", amount: 3000, effectiveAmount: 3000, spent: 1500 },
-        { category: "娛樂", amount: 2000, effectiveAmount: 2000, spent: 800 },
-        { category: "購物", amount: 2000, effectiveAmount: 2000, spent: 1200 },
-      ]);
-      setLoans([
-        { status: "active", remainingPrincipal: "46239",  interestRate: "16",  endDate: "2026-10", payments: [{ principalPaid: "4500",  interestPaid: "616"  }] },
-        { status: "active", remainingPrincipal: "300000", interestRate: "4.5", endDate: "2029-06", payments: [{ principalPaid: "7500",  interestPaid: "1125" }] },
-      ]);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     const thisMonth = new Date().toISOString().slice(0, 7);
     Promise.allSettled([
@@ -221,7 +199,7 @@ export default function SavingsPlan({
       }, 0));
       setTotalBudget(budgetsData.reduce((s, b) => s + b.effectiveAmount, 0));
     }).catch(e => console.error("[SavingsPlan]", e)).finally(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
   useFinanceChanged(fetchAll);

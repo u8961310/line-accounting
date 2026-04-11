@@ -88,7 +88,7 @@ function StatCard({ label, value, sub, color = "var(--accent-light)", accent = f
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export default function GradSchoolPlanner({ isDemo }: { isDemo: boolean }) {
+export default function GradSchoolPlanner() {
   const [settings, setSettings]     = useState<PlanSettings>(DEFAULT_SETTINGS);
   const [editMode, setEditMode]     = useState(false);
   const [draft,    setDraft]        = useState<PlanSettings>(DEFAULT_SETTINGS);
@@ -130,20 +130,6 @@ export default function GradSchoolPlanner({ isDemo }: { isDemo: boolean }) {
 
   // Fetch goals + monthly net + loans
   useEffect(() => {
-    if (isDemo) {
-      setGoals([{ id: "demo", name: "研究所基金", emoji: "🎓", savedAmount: 350000, targetAmount: 900000, linkedSource: null }]);
-      setCurrentSavings(350000);
-      setAvgMonthlyIncome(75000);
-      setTotalFixedExpenses(30000);
-      setTotalBudget(15000);
-      setMonthlyExpense(57000);
-      setLoans([
-        { name: "凱基速還金", lender: "凱基", remaining: 46239, monthly: 5000, payoffDate: "2026-10", interestRate: 16, clearsBeforeEnrollment: true },
-        { name: "永豐信貸", lender: "永豐", remaining: 300000, monthly: 8000, payoffDate: "2029-06", interestRate: 4.5, clearsBeforeEnrollment: false },
-      ]);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     const thisMonth = new Date().toISOString().slice(0, 7);
     Promise.allSettled([
@@ -227,12 +213,11 @@ export default function GradSchoolPlanner({ isDemo }: { isDemo: boolean }) {
       setLoans([...processedLoans, ...processedCC]);
     }).catch(e => { console.error("[GradSchoolPlanner] fetch error", e); })
     .finally(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   // 當 settings.linkedGoalId / goals / balances / initialSavings 變化時，同步已存金額
   // 優先順序：goal.linkedSource 銀行餘額 → goal.savedAmount → initialSavings（手動）
   useEffect(() => {
-    if (isDemo) return;
     if (settings.linkedGoalId) {
       const goal = goals.find(g => g.id === settings.linkedGoalId);
       if (!goal) { setCurrentSavings(settings.initialSavings || null); return; }
@@ -245,7 +230,7 @@ export default function GradSchoolPlanner({ isDemo }: { isDemo: boolean }) {
     } else {
       setCurrentSavings(settings.initialSavings > 0 ? settings.initialSavings : null);
     }
-  }, [settings.linkedGoalId, settings.initialSavings, goals, balances, isDemo]);
+  }, [settings.linkedGoalId, settings.initialSavings, goals, balances]);
 
   function saveSettings() {
     const netLiving = Math.max(0, draft.living - draft.monthlyStipend);

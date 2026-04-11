@@ -86,7 +86,7 @@ function getLoansDuringSchool(loans: LoanItem[], duration: number): number {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export default function LearningPlanAdvisor({ isDemo }: { isDemo: boolean }) {
+export default function LearningPlanAdvisor() {
   const [goals,    setGoals]    = useState<GoalItem[]>([]);
   const [balances, setBalances] = useState<BalanceItem[]>([]);
   const [avgMonthlyIncome,   setAvgMonthlyIncome]   = useState(0);
@@ -106,20 +106,6 @@ export default function LearningPlanAdvisor({ isDemo }: { isDemo: boolean }) {
 
   // 載入 API
   useEffect(() => {
-    if (isDemo) {
-      setGoals([{ id: "g1", name: "研究所基金", emoji: "🎓", savedAmount: 350000, linkedSource: "esun_bank" }]);
-      setBalances([{ source: "esun_bank", balance: 350000 }]);
-      setAvgMonthlyIncome(75000);
-      setTotalFixedExpenses(30000);
-      setTotalLoanMonthly(13000);
-      setTotalBudget(15000);
-      setLoans([
-        { status: "active", remainingPrincipal: "46239", interestRate: "16", endDate: "2026-10", payments: [{ principalPaid: "4500", interestPaid: "616" }] },
-        { status: "active", remainingPrincipal: "300000", interestRate: "4.5", endDate: "2029-06", payments: [{ principalPaid: "7500", interestPaid: "1125" }] },
-      ]);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     const thisMonth = new Date().toISOString().slice(0, 7);
     Promise.allSettled([
@@ -153,7 +139,7 @@ export default function LearningPlanAdvisor({ isDemo }: { isDemo: boolean }) {
       setLoans(loansData);
     }).catch(e => console.error("[LearningPlanAdvisor]", e))
       .finally(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   // ── Computed ──────────────────────────────────────────────────────────────
 

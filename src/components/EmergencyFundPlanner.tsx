@@ -80,7 +80,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export default function EmergencyFundPlanner({ isDemo }: { isDemo: boolean }) {
+export default function EmergencyFundPlanner() {
   const [settings, setSettings] = useState<PlanSettings>(DEFAULT_SETTINGS);
   const [editMode, setEditMode] = useState(false);
   const [draft,    setDraft]    = useState<PlanSettings>(DEFAULT_SETTINGS);
@@ -108,17 +108,6 @@ export default function EmergencyFundPlanner({ isDemo }: { isDemo: boolean }) {
 
   // 載入 API 資料
   useEffect(() => {
-    if (isDemo) {
-      setGoals([{ id: "demo-ef", name: "緊急預備金", emoji: "🛡️", savedAmount: 85000, targetAmount: 171000, linkedSource: null }]);
-      setSavings(85000);
-      setAvgMonthlyExpense(57000);
-      setAvgMonthlyIncome(75000);
-      setTotalFixedExpenses(30000);
-      setTotalLoanMonthly(13000);
-      setTotalBudget(15000);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     const thisMonth = new Date().toISOString().slice(0, 7);
     Promise.allSettled([
@@ -169,11 +158,10 @@ export default function EmergencyFundPlanner({ isDemo }: { isDemo: boolean }) {
       setTotalBudget(budgetsData.reduce((s, b) => s + b.amount, 0));
     }).catch(e => console.error("[EmergencyFundPlanner]", e))
       .finally(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   // 同步已存金額
   useEffect(() => {
-    if (isDemo) return;
     if (settings.linkedGoalId) {
       const goal = goals.find(g => g.id === settings.linkedGoalId);
       if (!goal) { setSavings(settings.initialSavings || null); return; }
@@ -186,7 +174,7 @@ export default function EmergencyFundPlanner({ isDemo }: { isDemo: boolean }) {
     } else {
       setSavings(settings.initialSavings > 0 ? settings.initialSavings : null);
     }
-  }, [settings.linkedGoalId, settings.initialSavings, goals, balances, isDemo]);
+  }, [settings.linkedGoalId, settings.initialSavings, goals, balances]);
 
   function saveSettings() {
     const next = { ...draft };

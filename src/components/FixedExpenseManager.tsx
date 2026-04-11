@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { DEMO_FIXED_EXPENSES, DEMO_LOANS_RAW } from "@/lib/demo-data";
 import { notifyFinanceChanged } from "@/lib/finance-events";
 
 interface FixedExpenseItem {
@@ -56,7 +55,7 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 
 const emptyForm = { name: "", amount: "", category: "居住", dayOfMonth: "", note: "" };
 
-export default function FixedExpenseManager({ isDemo = false, monthlyIncome = 0 }: { isDemo?: boolean; monthlyIncome?: number }) {
+export default function FixedExpenseManager({ monthlyIncome = 0 }: { monthlyIncome?: number }) {
   const [items,        setItems]        = useState<FixedExpenseItem[]>([]);
   const [loans,        setLoans]        = useState<LoanSummaryItem[]>([]);
   const [loading,      setLoading]      = useState(true);
@@ -69,21 +68,6 @@ export default function FixedExpenseManager({ isDemo = false, monthlyIncome = 0 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      if (isDemo) {
-        setItems(DEMO_FIXED_EXPENSES.fixedExpenses as FixedExpenseItem[]);
-        setLoans(
-          DEMO_LOANS_RAW
-            .filter(l => l.status === "active")
-            .map(l => ({
-              id:             l.id,
-              name:           l.name,
-              lender:         l.lender,
-              monthlyPayment: l.payments?.[0] ? parseFloat(l.payments[0].totalPaid) : 0,
-              interestRate:   parseFloat(l.interestRate),
-            }))
-        );
-        return;
-      }
       const [feRes, loanRes] = await Promise.all([
         fetch("/api/fixed-expenses"),
         fetch("/api/loans"),
@@ -107,7 +91,7 @@ export default function FixedExpenseManager({ isDemo = false, monthlyIncome = 0 
       );
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }, [isDemo]);
+  }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 

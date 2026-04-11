@@ -121,7 +121,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export default function EducationProgramPlanner({ isDemo }: { isDemo: boolean }) {
+export default function EducationProgramPlanner() {
   const [settings, setSettings] = useState<PlanSettings>(DEFAULT_SETTINGS);
   const [editMode, setEditMode] = useState(false);
   const [draft,    setDraft]    = useState<PlanSettings>(DEFAULT_SETTINGS);
@@ -160,16 +160,6 @@ export default function EducationProgramPlanner({ isDemo }: { isDemo: boolean })
 
   // 載入 API 資料
   useEffect(() => {
-    if (isDemo) {
-      setGoals([{ id: "demo-edu", name: "研究所基金", emoji: "🎓", savedAmount: 350000, targetAmount: 900000, linkedSource: "esun_bank" }]);
-      setSavings(350000);
-      setAvgMonthlyIncome(75000);
-      setTotalFixedExpenses(30000);
-      setTotalLoanMonthly(13000);
-      setTotalBudget(15000);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     const thisMonth = new Date().toISOString().slice(0, 7);
     Promise.allSettled([
@@ -209,11 +199,10 @@ export default function EducationProgramPlanner({ isDemo }: { isDemo: boolean })
       setTotalBudget(budgetsData.reduce((s, b) => s + b.amount, 0));
     }).catch(e => console.error("[EducationProgramPlanner]", e))
       .finally(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   // 同步已存金額
   useEffect(() => {
-    if (isDemo) return;
     if (settings.linkedGoalId) {
       const goal = goals.find(g => g.id === settings.linkedGoalId);
       if (!goal) { setSavings(settings.initialSavings || null); return; }
@@ -226,7 +215,7 @@ export default function EducationProgramPlanner({ isDemo }: { isDemo: boolean })
     } else {
       setSavings(settings.initialSavings > 0 ? settings.initialSavings : null);
     }
-  }, [settings.linkedGoalId, settings.initialSavings, goals, balances, isDemo]);
+  }, [settings.linkedGoalId, settings.initialSavings, goals, balances]);
 
   function saveSettings() {
     const next = { ...draft };

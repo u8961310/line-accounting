@@ -13,6 +13,13 @@ export interface AppNotification {
   severity: NotifSeverity;
   title:    string;
   body:     string;
+  meta?: {
+    category?:      string;
+    currentAmount?: number;
+    cardId?:        string;
+    billId?:        string;
+    totalAmount?:   number;
+  };
 }
 
 export interface NotificationsResponse {
@@ -65,6 +72,7 @@ export async function GET(): Promise<NextResponse> {
         severity: "danger",
         title:    `${budget.category} 已超出預算`,
         body:     `本月已花 NT$ ${Math.round(spent).toLocaleString("zh-TW")}，超出預算 NT$ ${Math.round(spent - budgetAmt).toLocaleString("zh-TW")}`,
+        meta:     { category: budget.category, currentAmount: budgetAmt },
       });
     } else if (pct >= 80 && pct < 100) {
       notes.push({
@@ -73,6 +81,7 @@ export async function GET(): Promise<NextResponse> {
         severity: "warn",
         title:    `${budget.category} 已用 ${Math.round(pct)}% 預算`,
         body:     `NT$ ${Math.round(spent).toLocaleString("zh-TW")} / ${Math.round(budgetAmt).toLocaleString("zh-TW")}，剩餘 NT$ ${Math.round(budgetAmt - spent).toLocaleString("zh-TW")}`,
+        meta:     { category: budget.category, currentAmount: budgetAmt },
       });
     }
   }
@@ -92,6 +101,7 @@ export async function GET(): Promise<NextResponse> {
     const daysLeft = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     const unpaid   = parseFloat(bill.totalAmount.toString()) - parseFloat(bill.paidAmount.toString());
 
+    const billMeta = { cardId: card.id, billId: bill.id, totalAmount: parseFloat(bill.totalAmount.toString()) };
     if (daysLeft < 0) {
       notes.push({
         id:       `bill-overdue-${card.id}`,
@@ -99,6 +109,7 @@ export async function GET(): Promise<NextResponse> {
         severity: "danger",
         title:    `${card.name} 帳單已逾期`,
         body:     `${bill.billingMonth} 帳單 NT$ ${Math.round(unpaid).toLocaleString("zh-TW")} 尚未繳清，已逾期 ${Math.abs(daysLeft)} 天`,
+        meta:     billMeta,
       });
     } else if (daysLeft <= 3) {
       notes.push({
@@ -107,6 +118,7 @@ export async function GET(): Promise<NextResponse> {
         severity: "danger",
         title:    `${card.name} 帳單 ${daysLeft} 天後到期`,
         body:     `NT$ ${Math.round(unpaid).toLocaleString("zh-TW")} 待繳，截止日 ${due.toLocaleDateString("zh-TW")}`,
+        meta:     billMeta,
       });
     } else if (daysLeft <= 7) {
       notes.push({
@@ -115,6 +127,7 @@ export async function GET(): Promise<NextResponse> {
         severity: "warn",
         title:    `${card.name} 帳單 ${daysLeft} 天後到期`,
         body:     `NT$ ${Math.round(unpaid).toLocaleString("zh-TW")} 待繳，截止日 ${due.toLocaleDateString("zh-TW")}`,
+        meta:     billMeta,
       });
     }
   }

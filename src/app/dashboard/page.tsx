@@ -2,11 +2,6 @@
 
 import React, { useEffect, useLayoutEffect, useState, useCallback, useRef } from "react";
 import {
-  DEMO_SUMMARY, DEMO_BALANCES, DEMO_NET_WORTH, DEMO_BUDGETS,
-  DEMO_TX_PAGE, DEMO_CATEGORIES, DEMO_FIXED_EXPENSES, DEMO_LOANS,
-  DEMO_AUDIT_LOGS, DEMO_GOALS, DEMO_DUPLICATE_CANDIDATES, DEMO_HEALTH_SNAPSHOTS,
-} from "@/lib/demo-data";
-import {
   AreaChart, Area, LineChart, Line,
   BarChart, Bar,
   XAxis, YAxis, Tooltip, Cell, Legend,
@@ -202,15 +197,22 @@ const CHART_CARDS_DEFAULT = [
   { id: "goals",            label: "財務目標"       },
   { id: "distribution",     label: "收支分佈"       },
   { id: "fixed-loans",      label: "固定支出與貸款" },
+  { id: "anomaly",          label: "異常支出偵測"   },
 ];
 type ChartCardId = (typeof CHART_CARDS_DEFAULT)[number]["id"];
-const CHART_VIS_KEY   = "chart_cards_v1";
-const CHART_ORDER_KEY = "chart_cards_order_v1";
+const CHART_VIS_KEY      = "chart_cards_v1";
+const CHART_ORDER_KEY    = "chart_cards_order_v1";
+const CHART_COLLAPSE_KEY = "chart_cards_collapsed_v1";
 
 function getHiddenCards(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try { return new Set(JSON.parse(localStorage.getItem(CHART_VIS_KEY) ?? "[]") as string[]); } catch { return new Set(); }
 }
+function getCollapsedCards(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try { return new Set(JSON.parse(localStorage.getItem(CHART_COLLAPSE_KEY) ?? "[]") as string[]); } catch { return new Set(); }
+}
+
 function getCardOrder(): ChartCardId[] {
   if (typeof window === "undefined") return CHART_CARDS_DEFAULT.map(c => c.id as ChartCardId);
   try {
@@ -284,6 +286,49 @@ function ChartCardSettings({ hidden, order, onToggle, onReorder, onClose }: {
         })}
       </div>
       <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>拖曳 ⠿ 調整順序，點 ☑ 切換顯示，設定自動儲存</p>
+    </div>
+  );
+}
+
+function CollapsibleCard({ label, orderIndex, gap, isCollapsed, onToggle, children }: {
+  label:      string;
+  orderIndex: number;
+  gap?:       boolean;
+  isCollapsed: boolean;
+  onToggle:   () => void;
+  children:   React.ReactNode;
+}) {
+  if (isCollapsed) {
+    return (
+      <div
+        onClick={onToggle}
+        className="flex items-center justify-between px-4 py-3 rounded-2xl cursor-pointer hover:opacity-80 transition-opacity"
+        style={{ order: orderIndex, background: "var(--bg-card)", border: "1px solid var(--border-inner)" }}
+      >
+        <span className="text-[14px]" style={{ color: "var(--text-muted)" }}>▸</span>
+        <span className="text-[14px] font-semibold flex-1 ml-2" style={{ color: "var(--text-sub)" }}>{label}</span>
+        <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>展開</span>
+      </div>
+    );
+  }
+  const innerStyle: React.CSSProperties = gap
+    ? { display: "flex", flexDirection: "column", gap: "1.25rem" }
+    : {};
+  return (
+    <div style={{ order: orderIndex }}>
+      <div className="flex justify-end">
+        <button
+          onClick={onToggle}
+          className="text-[11px] px-2 py-0.5 rounded-lg hover:opacity-70 transition-opacity mb-1"
+          style={{ color: "var(--text-muted)" }}
+          title="折疊此卡片"
+        >
+          ▴ 折疊
+        </button>
+      </div>
+      <div style={innerStyle}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -506,7 +551,6 @@ interface TxPage {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
-  const isDemo = useRef(typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1");
   // Tab 快取：記錄已成功載入過資料的 Tab，切回時不重新 fetch
   const loadedTabs = useRef<Set<TabId>>(new Set());
   // 快照自動儲存：每個 session 只執行一次
@@ -585,6 +629,17 @@ export default function DashboardPage() {
     typeof window !== "undefined" ? getCardOrder() : CHART_CARDS_DEFAULT.map(c => c.id as ChartCardId)
   );
   const [showCardSettings, setShowCardSettings] = useState(false);
+  const [collapsedCards,   setCollapsedCards]   = useState<Set<string>>(() =>
+    typeof window !== "undefined" ? getCollapsedCards() : new Set()
+  );
+  const toggleCollapse = (id: string) => {
+    setCollapsedCards(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      localStorage.setItem(CHART_COLLAPSE_KEY, JSON.stringify(Array.from(next)));
+      return next;
+    });
+  };
   const [lazyReady, setLazyReady] = useState(false);
   const showCard  = (id: string) => {
     if (hiddenCards.has(id)) return false;
@@ -665,13 +720,6 @@ export default function DashboardPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      if (isDemo.current) {
-        setData(DEMO_SUMMARY);
-        setBalances(DEMO_BALANCES);
-        setNetWorth(DEMO_NET_WORTH);
-        setBudgetOverview(DEMO_BUDGETS.budgets);
-        return;
-      }
       const [s, b, nw, bg] = await Promise.all([
         fetch(`/api/summary?months=${months}`),
         fetch("/api/balances"),
@@ -711,7 +759,6 @@ export default function DashboardPage() {
   }, [months, currentMonth]);
 
   const fetchAiInsight = useCallback(async (targetMonth?: string) => {
-    if (isDemo.current) return;
     const month = targetMonth ?? aiInsightMonth;
     setAiInsightLoading(true);
     setAiInsightErr(null);
@@ -727,7 +774,6 @@ export default function DashboardPage() {
   }, [aiInsightMonth]);
 
   const fetchAnomalies = useCallback(async () => {
-    if (isDemo.current) return;
     setAnomalyLoading(true);
     try {
       const res = await fetch(`/api/anomaly-detection?month=${currentMonth}&lookback=4`);
@@ -740,7 +786,6 @@ export default function DashboardPage() {
   const fetchTxPage = useCallback(async (_page: number, append = false) => {
     setTxLoading(true);
     try {
-      if (isDemo.current) { setTxData(DEMO_TX_PAGE); return; }
       const p = new URLSearchParams({ page: String(_page), limit: String(TX_LIMIT) });
       if (txFilterCat)  p.set("category",  txFilterCat);
       if (txSearch)     p.set("note",      txSearch);
@@ -764,12 +809,6 @@ export default function DashboardPage() {
   const fetchAuditLogs = useCallback(async (page: number, filter: string, silent = false) => {
     if (!silent) setAuditLoading(true);
     try {
-      if (isDemo.current) {
-        setAuditLogs(DEMO_AUDIT_LOGS.logs);
-        setAuditTotal(DEMO_AUDIT_LOGS.total);
-        setAuditPages(DEMO_AUDIT_LOGS.pages);
-        return;
-      }
       const actionParam = filter ? `&action=${encodeURIComponent(filter)}` : "";
       const res = await fetch(`/api/audit-logs?page=${page}${actionParam}`);
       const d = await res.json() as { logs: AuditLogEntry[]; total: number; pages: number };
@@ -931,7 +970,6 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    if (isDemo.current) { setCategories(DEMO_CATEGORIES); return; }
     Promise.all([
       fetch("/api/transactions/categories").then(r => r.json()),
       fetch("/api/categories").then(r => r.json()),
@@ -974,7 +1012,6 @@ export default function DashboardPage() {
     if (activeTab !== "import") return;
     if (loadedTabs.current.has("import")) return;
     loadedTabs.current.add("import");
-    if (isDemo.current) { setDuplicatePairs(DEMO_DUPLICATE_CANDIDATES.pairs as DuplicatePair[]); return; }
     fetch("/api/duplicate-candidates")
       .then(r => r.json())
       .then((d: { pairs: DuplicatePair[] }) => setDuplicatePairs(d.pairs))
@@ -1074,7 +1111,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (activeTab !== "charts") return;
-    if (isDemo.current) { setFixedExpenses(DEMO_FIXED_EXPENSES.fixedExpenses); return; }
     fetch("/api/fixed-expenses")
       .then(r => r.json())
       .then((d: { fixedExpenses: typeof fixedExpenses }) => setFixedExpenses(d.fixedExpenses ?? []))
@@ -1083,10 +1119,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (activeTab !== "charts") return;
-    if (isDemo.current) {
-      setHealthSnapshots(DEMO_HEALTH_SNAPSHOTS);
-      return;
-    }
     fetch("/api/net-worth/snapshots")
       .then(r => r.json())
       .then((d: { month: string; netWorth: number; assets: number; debt: number }[]) => setNwSnapshots(d))
@@ -1100,7 +1132,6 @@ export default function DashboardPage() {
   // 自動 upsert 快照：圖表 Tab 載入後，data + netWorth 就緒時執行一次
   useEffect(() => {
     if (activeTab !== "charts") return;
-    if (isDemo.current) return;
     if (autoSavedSnapshots.current) return;
     if (!data || !netWorth) return;
     autoSavedSnapshots.current = true;
@@ -1143,7 +1174,6 @@ export default function DashboardPage() {
   // 財務目標
   useEffect(() => {
     if (activeTab !== "charts") return;
-    if (isDemo.current) { setGoals(DEMO_GOALS); return; }
     fetch("/api/goals").then(r => r.json()).then((d: GoalItem[]) => setGoals(d)).catch(() => {});
   }, [activeTab]);
 
@@ -1151,38 +1181,23 @@ export default function DashboardPage() {
   // 週消費分佈資料（近 3 個月交易）
   useEffect(() => {
     if (activeTab !== "charts") return;
-    const src = isDemo.current ? Promise.resolve(DEMO_SUMMARY.recent) :
-      fetch(`/api/transactions?limit=500`).then(r => r.json()).then((d: { items: typeof weekdayTxs }) => d.items);
-    src.then(items => setWeekdayTxs(items.map((t: { date: string; amount: number; type: string; category: string }) => ({ date: t.date, amount: t.amount, type: t.type, category: t.category ?? "" })))
-    ).catch(() => {});
+    fetch(`/api/transactions?limit=500`).then(r => r.json()).then((d: { items: typeof weekdayTxs }) => d.items)
+      .then(items => setWeekdayTxs(items.map((t: { date: string; amount: number; type: string; category: string }) => ({ date: t.date, amount: t.amount, type: t.type, category: t.category ?? "" }))))
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   // 日曆視圖資料
   useEffect(() => {
     if (activeTab !== "charts") return;
-    const src = isDemo.current ? Promise.resolve(DEMO_SUMMARY.recent) :
-      fetch(`/api/transactions?limit=500&month=${calendarMonth}`).then(r => r.json()).then((d: { items: typeof calendarTxs }) => d.items);
-    src.then(items => setCalendarTxs((items as { date: string; amount: number; type: string; category: string; note: string | null }[]).map(t => ({ date: t.date, amount: t.amount, type: t.type, category: t.category ?? "", note: t.note ?? null })))
-    ).catch(() => {});
+    fetch(`/api/transactions?limit=500&month=${calendarMonth}`).then(r => r.json()).then((d: { items: typeof calendarTxs }) => d.items)
+      .then(items => setCalendarTxs((items as { date: string; amount: number; type: string; category: string; note: string | null }[]).map(t => ({ date: t.date, amount: t.amount, type: t.type, category: t.category ?? "", note: t.note ?? null }))))
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, calendarMonth]);
 
   useEffect(() => {
     if (activeTab !== "charts" || loansTimeline.length > 0) return;
-    if (isDemo.current) {
-      setLoansTimeline(DEMO_LOANS.filter(l => l.status === "active").map(l => {
-        const remaining = Number(l.remainingPrincipal);
-        const lastPay   = l.payments?.[0];
-        const monthlyPrincipal = lastPay ? Number(lastPay.principalPaid) : 0;
-        const monthsLeft = monthlyPrincipal > 0 ? Math.ceil(remaining / monthlyPrincipal) : null;
-        const payoffDate = monthsLeft !== null
-          ? (() => { const d = new Date(); d.setMonth(d.getMonth() + monthsLeft); return d.toISOString().slice(0, 7); })()
-          : null;
-        return { id: l.id, name: l.name, lender: l.lender, originalPrincipal: Number(l.originalPrincipal), remainingPrincipal: remaining, monthlyPrincipal, interestRate: Number(l.interestRate), endDate: l.endDate, monthsLeft, payoffDate };
-      }));
-      return;
-    }
     fetch("/api/loans")
       .then(r => r.json())
       .then((loans: {
@@ -1522,6 +1537,28 @@ export default function DashboardPage() {
 
   const nw = netWorth?.netWorth ?? 0;
 
+  // ── 財務健康分數（Header 徽章 + 圖表卡共用）─────────────────────────────────
+  const healthScore = React.useMemo(() => {
+    if (!data) return null;
+    const savingsRate     = data.totals.income > 0 ? ((data.totals.income - data.totals.expense) / data.totals.income) * 100 : 0;
+    const debtRatio       = (netWorth?.totalAssets ?? 0) > 0 ? ((netWorth!.totalDebt) / netWorth!.totalAssets) * 100 : 0;
+    const budgetAdherence = budgetOverview.length > 0
+      ? (budgetOverview.filter(b => b.amount > 0 && b.spent <= b.amount).length / budgetOverview.filter(b => b.amount > 0).length) * 100
+      : 100;
+    const savingsScore = savingsRate >= 30 ? 100 : savingsRate >= 20 ? 75 : savingsRate >= 10 ? 50 : savingsRate > 0 ? 25 : 0;
+    const debtScore    = debtRatio   <= 20 ? 100 : debtRatio   <= 40 ? 75 : debtRatio   <= 60 ? 50 : 25;
+    const budgetScore  = budgetAdherence >= 100 ? 100 : budgetAdherence >= 80 ? 75 : budgetAdherence >= 60 ? 50 : 25;
+    const total = Math.round(savingsScore * 0.4 + debtScore * 0.3 + budgetScore * 0.3);
+    const grade = total >= 80
+      ? { label: "優良",   color: "#10B981" }
+      : total >= 60
+      ? { label: "普通",   color: "#F59E0B" }
+      : total >= 40
+      ? { label: "待改善", color: "#F97316" }
+      : { label: "需注意", color: "#EF4444" };
+    return { total, grade, savingsScore, debtScore, budgetScore, savingsRate, debtRatio, budgetAdherence };
+  }, [data, netWorth, budgetOverview]);
+
   return (
     <div className="min-h-screen" data-theme={theme.id} style={{
       background: "var(--bg-page)",
@@ -1529,15 +1566,6 @@ export default function DashboardPage() {
       color: "var(--text-primary)",
     }}>
       <style>{themeToCSS(theme)}</style>
-
-      {/* ── Demo Badge (fixed bottom-right) ── */}
-      {isDemo.current && (
-        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[14px] font-bold shadow-2xl select-none"
-          style={{ background: "linear-gradient(135deg,#F59E0B,#EF4444)", color: "#fff", boxShadow: "0 8px 32px rgba(239,68,68,0.4)" }}>
-          <span className="w-2 h-2 rounded-full bg-white animate-pulse inline-block" />
-          DEMO 模式
-        </div>
-      )}
 
       {/* ── Header (單行) ── */}
       <header className="sticky top-0 z-20 border-b" style={{ background: "var(--bg-card)", borderColor: "var(--border)", boxShadow: "var(--card-shadow)" }}>
@@ -1556,6 +1584,16 @@ export default function DashboardPage() {
                 className="hidden sm:flex items-center gap-0.5 text-[12px] font-bold px-1.5 py-0.5 rounded-full"
                 style={{ background: "rgba(251,146,60,0.15)", color: "#F97316" }}>
                 🔥{streak.currentStreak}
+              </span>
+            )}
+            {healthScore && (
+              <span
+                title={`財務健康評分 ${healthScore.total} 分`}
+                className="hidden sm:flex items-center gap-1 text-[12px] font-bold px-1.5 py-0.5 rounded-full cursor-pointer"
+                style={{ background: `${healthScore.grade.color}18`, color: healthScore.grade.color }}
+                onClick={() => setActiveTab("charts")}
+              >
+                {healthScore.total} <span style={{ fontWeight: 400 }}>{healthScore.grade.label}</span>
               </span>
             )}
           </div>
@@ -1770,7 +1808,7 @@ export default function DashboardPage() {
             )}
 
             {/* 通知 */}
-            <NotificationPanel isDemo={isDemo.current} />
+            <NotificationPanel />
 
             {/* 重新整理 */}
             <button onClick={() => {
@@ -2076,36 +2114,6 @@ export default function DashboardPage() {
               );
             })()}
 
-            {/* ── 異常支出警示 ── */}
-            {anomalyLoading && (
-              <div className="flex items-center gap-2 px-4 py-3 rounded-2xl text-[13px]"
-                style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                <span className="text-[14px]">🔍</span>
-                <span style={{ color: "var(--text-muted)" }}>正在分析異常支出…</span>
-              </div>
-            )}
-            {!anomalyLoading && anomalies.length > 0 && (
-              <div className="space-y-2">
-                {anomalies.map(a => (
-                  <div key={a.category} className="flex items-center gap-3 px-4 py-3 rounded-2xl"
-                    style={{ background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.35)" }}>
-                    <span className="text-[18px]">📈</span>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[14px] font-bold" style={{ color: "#FB923C" }}>
-                        {a.category} 支出異常偏高
-                      </span>
-                      <span className="text-[13px] ml-2" style={{ color: "rgba(251,146,60,0.8)" }}>
-                        本月 NT${a.current.toLocaleString()}，過去平均 NT${a.mean.toLocaleString()}
-                      </span>
-                    </div>
-                    <span className="text-[13px] font-bold tabular-nums flex-shrink-0 px-2 py-0.5 rounded-lg"
-                      style={{ background: "rgba(251,146,60,0.15)", color: "#FB923C" }}>
-                      z={a.zscore}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
 
             {/* ── AI 月度洞察 ── */}
             <div className="rounded-2xl overflow-hidden"
@@ -2231,8 +2239,10 @@ export default function DashboardPage() {
             {showCard("budget-overview") && budgetOverview.filter(b => b.amount > 0).length > 0 && (() => {
               const cats = budgetOverview.filter(b => b.amount > 0).sort((a, b) => (b.spent / b.amount) - (a.spent / a.amount));
               const currentMth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+              const _budgetOverviewOrderIdx = cardOrder.indexOf("budget-overview");
               return (
-                <div className="rounded-2xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border)", order: cardOrder.indexOf("budget-overview") }}>
+                <CollapsibleCard label="分類預算快覽列" orderIndex={_budgetOverviewOrderIdx} isCollapsed={collapsedCards.has("budget-overview")} onToggle={() => toggleCollapse("budget-overview")}>
+                <div className="rounded-2xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <p className="text-[16px] font-bold" style={{ color: "var(--text-primary)" }}>分類預算快覽</p>
@@ -2275,11 +2285,13 @@ export default function DashboardPage() {
                     })}
                   </div>
                 </div>
+                </CollapsibleCard>
               );
             })()}
 
             {/* ── 儲蓄規劃摘要卡 ── */}
             {showCard("savings-summary") && (() => {
+              const _savingsSummaryOrderIdx = cardOrder.indexOf("savings-summary");
               // 讀取各計畫設定
               let gradPlan: { linkedGoalId?: string; tuition?: number; living?: number; duration?: number; monthlyStipend?: number; initialSavings?: number } | null = null;
               let efPlan:   { linkedGoalId?: string; targetMonths?: number; manualTarget?: number; initialSavings?: number } | null = null;
@@ -2349,8 +2361,9 @@ export default function DashboardPage() {
               if (!hasAnyPlan) return null;
 
               return (
+                <CollapsibleCard label="儲蓄規劃摘要" orderIndex={_savingsSummaryOrderIdx} isCollapsed={collapsedCards.has("savings-summary")} onToggle={() => toggleCollapse("savings-summary")}>
                 <div className="rounded-2xl p-5 relative overflow-hidden"
-                  style={{ background: "var(--bg-card)", border: "1px solid rgba(99,102,241,0.25)", boxShadow: "0 0 24px rgba(99,102,241,0.06)", order: cardOrder.indexOf("savings-summary") }}>
+                  style={{ background: "var(--bg-card)", border: "1px solid rgba(99,102,241,0.25)", boxShadow: "0 0 24px rgba(99,102,241,0.06)" }}>
                   <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl"
                     style={{ background: "linear-gradient(90deg, #10B981, #6366F1, #F59E0B)" }} />
 
@@ -2422,10 +2435,11 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
+                </CollapsibleCard>
               );
             })()}
 
-            {showCard("net-worth") && <div style={{ order: cardOrder.indexOf("net-worth"), display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+            {showCard("net-worth") && <CollapsibleCard label="淨資產總覽" orderIndex={cardOrder.indexOf("net-worth")} gap isCollapsed={collapsedCards.has("net-worth")} onToggle={() => toggleCollapse("net-worth")}>
             {/* Hero: 淨資產 */}
             <div className="rounded-2xl p-6 relative overflow-hidden" style={{
               background: "var(--hero-bg)",
@@ -2590,7 +2604,7 @@ export default function DashboardPage() {
               </div>
               );
             })()}
-            </div>}
+            </CollapsibleCard>}
 
             {/* 別名 / 儲蓄目標 / 現金餘額 編輯 Modal */}
             {bankEditSource && (() => {
@@ -2699,6 +2713,7 @@ export default function DashboardPage() {
 
             {/* ── 當月 vs 上月對比卡 ── */}
             {showCard("month-compare") && data && prevMonthSummary && (() => {
+              const _monthCompareOrderIdx = cardOrder.indexOf("month-compare");
               const cur  = data.totals;
               const prev = prevMonthSummary.totals;
               const expDiff    = cur.expense - prev.expense;
@@ -2717,7 +2732,8 @@ export default function DashboardPage() {
                 .filter(x => Math.abs(x.diff) > 50)
                 .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).slice(0, 3);
               return (
-                <div className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-card)", border: "1px solid var(--border)", order: cardOrder.indexOf("month-compare") }}>
+                <CollapsibleCard label="當月 vs 上月" orderIndex={_monthCompareOrderIdx} isCollapsed={collapsedCards.has("month-compare")} onToggle={() => toggleCollapse("month-compare")}>
+                <div className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
                   <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border-inner)" }}>
                     <p className="text-[14px] font-bold" style={{ color: "var(--text-primary)" }}>📊 當月 vs 上月</p>
                     <div className="flex items-center gap-3">
@@ -2793,27 +2809,18 @@ export default function DashboardPage() {
                     );
                   })()}
                 </div>
+                </CollapsibleCard>
               );
             })()}
 
             {data && <>
               {/* ── 財務健康評分（置頂摘要）── */}
-              {showCard("health-score") && <div style={{ order: cardOrder.indexOf("health-score") }}>{(() => {
-                const savingsRate = (data?.totals?.income ?? 0) > 0
-                  ? ((data!.totals.income - data!.totals.expense) / data!.totals.income) * 100 : 0;
-                const debtRatio = (netWorth?.totalAssets ?? 0) > 0
-                  ? ((netWorth!.totalDebt) / netWorth!.totalAssets) * 100 : 0;
-                const budgetAdherence = budgetOverview.length > 0
-                  ? (budgetOverview.filter(b => b.amount > 0 && b.spent <= b.amount).length / budgetOverview.filter(b => b.amount > 0).length) * 100 : 100;
-                const savingsScore  = savingsRate >= 30 ? 100 : savingsRate >= 20 ? 75 : savingsRate >= 10 ? 50 : savingsRate > 0 ? 25 : 0;
-                const debtScore     = debtRatio  <= 20 ? 100 : debtRatio  <= 40 ? 75 : debtRatio  <= 60 ? 50 : 25;
-                const budgetScore   = budgetAdherence >= 100 ? 100 : budgetAdherence >= 80 ? 75 : budgetAdherence >= 60 ? 50 : 25;
-                const total = Math.round(savingsScore * 0.4 + debtScore * 0.3 + budgetScore * 0.3);
-                const grade = total >= 80 ? { label: "優良", color: "#10B981" } : total >= 60 ? { label: "普通", color: "#F59E0B" } : total >= 40 ? { label: "待改善", color: "#F97316" } : { label: "需注意", color: "#EF4444" };
+              {showCard("health-score") && healthScore && <CollapsibleCard label="財務健康評分" orderIndex={cardOrder.indexOf("health-score")} isCollapsed={collapsedCards.has("health-score")} onToggle={() => toggleCollapse("health-score")}>{(() => {
+                const { total, grade, savingsScore, debtScore, budgetScore, savingsRate, debtRatio, budgetAdherence } = healthScore;
                 const items = [
-                  { label: "儲蓄率", score: savingsScore, detail: `${savingsRate.toFixed(0)}%`, weight: "40%" },
+                  { label: "儲蓄率",  score: savingsScore, detail: `${savingsRate.toFixed(0)}%`, weight: "40%" },
                   { label: "負債比",  score: debtScore,    detail: debtRatio > 100 ? `${(debtRatio / 100).toFixed(1)}x` : `${debtRatio.toFixed(0)}%`, weight: "30%" },
-                  { label: "預算達成",score: budgetScore,  detail: `${budgetAdherence.toFixed(0)}%`, weight: "30%" },
+                  { label: "預算達成", score: budgetScore,  detail: `${budgetAdherence.toFixed(0)}%`, weight: "30%" },
                 ];
                 return (
                   <Card className="p-5">
@@ -2882,9 +2889,9 @@ export default function DashboardPage() {
 
                   </Card>
                 );
-              })()}</div>}
+              })()}</CollapsibleCard>}
 
-              {showCard("trend") && <div style={{ order: cardOrder.indexOf("trend"), display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              {showCard("trend") && <CollapsibleCard label="趨勢追蹤" orderIndex={cardOrder.indexOf("trend")} gap isCollapsed={collapsedCards.has("trend")} onToggle={() => toggleCollapse("trend")}>
               <SectionLabel label="趨勢追蹤" />
               {/* ── 月份選擇器 ── */}
               {data.monthly.length > 1 && (
@@ -3087,9 +3094,9 @@ export default function DashboardPage() {
                 );
               })()}
 
-              </div>}
+              </CollapsibleCard>}
 
-              {showCard("goals") && <div style={{ order: cardOrder.indexOf("goals"), display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              {showCard("goals") && <CollapsibleCard label="財務目標" orderIndex={cardOrder.indexOf("goals")} gap isCollapsed={collapsedCards.has("goals")} onToggle={() => toggleCollapse("goals")}>
               <SectionLabel label="目標規劃" />
               {/* ── 財務目標追蹤 ── */}
               <Card className="p-6">
@@ -3687,9 +3694,9 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              </div>}
+              </CollapsibleCard>}
 
-              {showCard("distribution") && <div style={{ order: cardOrder.indexOf("distribution"), display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              {showCard("distribution") && <CollapsibleCard label="收支分佈" orderIndex={cardOrder.indexOf("distribution")} gap isCollapsed={collapsedCards.has("distribution")} onToggle={() => toggleCollapse("distribution")}>
               <SectionLabel label="收支分佈" />
               {/* Chart 2: 資產 & 負債分佈 Donut */}
               {netWorth && (
@@ -4037,9 +4044,9 @@ export default function DashboardPage() {
                 );
               })()}
 
-              </div>}
+              </CollapsibleCard>}
 
-              {showCard("fixed-loans") && <div style={{ order: cardOrder.indexOf("fixed-loans"), display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              {showCard("fixed-loans") && <CollapsibleCard label="固定支出與貸款" orderIndex={cardOrder.indexOf("fixed-loans")} gap isCollapsed={collapsedCards.has("fixed-loans")} onToggle={() => toggleCollapse("fixed-loans")}>
               {/* 固定支出與貸款 — 導引連結卡 */}
               <SectionLabel label="固定支出與貸款" />
               {(fixedExpenses.length > 0 || loansTimeline.length > 0) && (() => {
@@ -4103,7 +4110,52 @@ export default function DashboardPage() {
                   </div>
                 );
               })()}
-              </div>}
+              </CollapsibleCard>}
+
+              {/* ── 異常支出偵測卡 ── */}
+              {showCard("anomaly") && (
+                <CollapsibleCard label="異常支出偵測" orderIndex={cardOrder.indexOf("anomaly")} isCollapsed={collapsedCards.has("anomaly")} onToggle={() => toggleCollapse("anomaly")}>
+                  <Card className="p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <p className="text-[16px] font-bold" style={{ color: "var(--text-primary)" }}>📈 異常支出偵測</p>
+                        <p className="text-[13px] mt-0.5" style={{ color: "var(--text-muted)" }}>Z-score 統計分析，偵測本月偏高的支出分類</p>
+                      </div>
+                    </div>
+                    {anomalyLoading ? (
+                      <div className="flex items-center gap-2 py-4 text-[13px]" style={{ color: "var(--text-muted)" }}>
+                        <span>🔍</span>
+                        <span>正在分析異常支出…</span>
+                      </div>
+                    ) : anomalies.length === 0 ? (
+                      <div className="flex items-center gap-2 py-4">
+                        <span className="text-[20px]">✅</span>
+                        <p className="text-[14px] font-semibold" style={{ color: "var(--text-primary)" }}>本月無異常支出</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {anomalies.map(a => (
+                          <div key={a.category} className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                            style={{ background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.35)" }}>
+                            <div className="flex-1 min-w-0">
+                              <span className="text-[14px] font-bold" style={{ color: "#FB923C" }}>
+                                {a.category} 支出異常偏高
+                              </span>
+                              <p className="text-[13px] mt-0.5" style={{ color: "rgba(251,146,60,0.8)" }}>
+                                本月 NT${a.current.toLocaleString()}，過去平均 NT${a.mean.toLocaleString()}（σ={a.stddev.toLocaleString()}）
+                              </p>
+                            </div>
+                            <span className="text-[12px] font-bold tabular-nums flex-shrink-0 px-2 py-0.5 rounded-lg"
+                              style={{ background: "rgba(251,146,60,0.15)", color: "#FB923C" }}>
+                              z={a.zscore}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                </CollapsibleCard>
+              )}
 
             </>}
 
@@ -4801,14 +4853,14 @@ export default function DashboardPage() {
         {/* ── Loans ── */}
         {activeTab === "loans" && (
           <div className="space-y-8">
-            <FixedExpenseManager isDemo={isDemo.current} monthlyIncome={data?.totals?.income ?? 0} />
+            <FixedExpenseManager monthlyIncome={data?.totals?.income ?? 0} />
             <div>
               <p className="text-[15px] font-bold mb-4" style={{ color: "var(--text-sub)" }}>還債優化建議</p>
-              <DebtOptimizer isDemo={isDemo.current} />
+              <DebtOptimizer />
             </div>
             <div>
               <p className="text-[15px] font-bold mb-4" style={{ color: "var(--text-sub)" }}>貸款與信用卡管理</p>
-              <LoanManager isDemo={isDemo.current} />
+              <LoanManager />
             </div>
           </div>
         )}
@@ -4817,27 +4869,27 @@ export default function DashboardPage() {
         {activeTab === "budget" && <BudgetManager extraCategories={customExpenseCats} />}
 
         {/* ── Subscriptions ── */}
-        {activeTab === "subscriptions" && <SubscriptionDetector isDemo={isDemo.current} />}
+        {activeTab === "subscriptions" && <SubscriptionDetector />}
 
         {/* ── Advanced Analysis (進階財務分析) ── */}
-        {activeTab === "annual"            && <AnnualReport      isDemo={isDemo.current} />}
-        {activeTab === "retirement"        && <RetirementCalc    isDemo={isDemo.current} />}
-        {activeTab === "fire"              && <FireCalc          isDemo={isDemo.current} />}
-        {activeTab === "income-stability"  && <IncomeStability   isDemo={isDemo.current} />}
-        {activeTab === "expense-ratio"     && <ExpenseRatio      isDemo={isDemo.current} />}
-        {activeTab === "account-flow"       && <AccountFlow        isDemo={isDemo.current} />}
-        {activeTab === "spending-forecast"  && <SpendingForecast   isDemo={isDemo.current} />}
-        {activeTab === "cashflow-forecast"  && <CashflowForecast   isDemo={isDemo.current} />}
-        {activeTab === "bill-calendar"      && <BillCalendar        isDemo={isDemo.current} />}
-        {activeTab === "savings-plan"       && <SavingsPlan          isDemo={isDemo.current} onNavigate={t => setActiveTab(t as TabId)} />}
-        {activeTab === "education-program" && <EducationProgramPlanner isDemo={isDemo.current} />}
-        {activeTab === "grad-school"       && <GradSchoolPlanner       isDemo={isDemo.current} />}
-        {activeTab === "milestone"         && <MilestoneTimeline       isDemo={isDemo.current} />}
-        {activeTab === "personality"       && <PersonalityReport       isDemo={isDemo.current} />}
+        {activeTab === "annual"            && <AnnualReport      />}
+        {activeTab === "retirement"        && <RetirementCalc    />}
+        {activeTab === "fire"              && <FireCalc          />}
+        {activeTab === "income-stability"  && <IncomeStability   />}
+        {activeTab === "expense-ratio"     && <ExpenseRatio      />}
+        {activeTab === "account-flow"       && <AccountFlow        />}
+        {activeTab === "spending-forecast"  && <SpendingForecast   />}
+        {activeTab === "cashflow-forecast"  && <CashflowForecast   />}
+        {activeTab === "bill-calendar"      && <BillCalendar        />}
+        {activeTab === "savings-plan"       && <SavingsPlan          onNavigate={t => setActiveTab(t as TabId)} />}
+        {activeTab === "education-program" && <EducationProgramPlanner />}
+        {activeTab === "grad-school"       && <GradSchoolPlanner       />}
+        {activeTab === "milestone"         && <MilestoneTimeline       />}
+        {activeTab === "personality"       && <PersonalityReport       />}
 
         {/* ── Payees ── */}
 
-        {activeTab === "categories"  && <CategoryManager isDemo={isDemo.current} />}
+        {activeTab === "categories"  && <CategoryManager />}
 
         {/* ── Import ── */}
         {activeTab === "import" && (
@@ -4857,7 +4909,6 @@ export default function DashboardPage() {
               setTxData(null);
               setTxPage(1);
               // refresh duplicate list after import
-              if (isDemo.current) return;
               fetch("/api/duplicate-candidates")
                 .then(r => r.json())
                 .then((d: { pairs: DuplicatePair[] }) => { setDuplicatePairs(d.pairs); setDismissedDupPairs(new Set()); })

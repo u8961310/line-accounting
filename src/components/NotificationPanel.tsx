@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { DEMO_NOTIFICATIONS } from "@/lib/demo-data";
 import type { AppNotification, NotificationsResponse } from "@/app/api/notifications/route";
 
 const LS_KEY = "notif_read_ids";
@@ -88,13 +87,55 @@ function BellButton({ unreadCount, dangerUnread, open, onClick }: BellButtonProp
 }
 
 interface NotifItemProps {
-  notif:     AppNotification;
-  isRead:    boolean;
-  onDismiss: (id: string) => void;
-  onRestore: (id: string) => void;
+  notif:      AppNotification;
+  isRead:     boolean;
+  onDismiss:  (id: string) => void;
+  onRestore:  (id: string) => void;
+  onRefresh?: () => void;
 }
 
-function NotifItem({ notif, isRead, onDismiss, onRestore }: NotifItemProps) {
+function NotifItem({ notif, isRead, onDismiss, onRestore, onRefresh }: NotifItemProps) {
+  const [adjusting,   setAdjusting]   = useState(false);
+  const [newAmount,   setNewAmount]   = useState(String(notif.meta?.currentAmount ?? ""));
+  const [actionBusy,  setActionBusy]  = useState(false);
+  const [actionDone,  setActionDone]  = useState(false);
+
+  const handleAdjustBudget = async () => {
+    const amt = parseFloat(newAmount);
+    if (!notif.meta?.category || isNaN(amt) || amt <= 0) return;
+    setActionBusy(true);
+    try {
+      await fetch("/api/budgets", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: notif.meta.category, amount: amt }),
+      });
+      setActionDone(true);
+      setAdjusting(false);
+      onRefresh?.();
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const handleMarkPaid = async () => {
+    const { cardId, billId, totalAmount } = notif.meta ?? {};
+    if (!cardId || !billId || totalAmount == null) return;
+    setActionBusy(true);
+    try {
+      await fetch(`/api/credit-cards/${cardId}/bills/${billId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paidAmount: totalAmount }),
+      });
+      setActionDone(true);
+      onDismiss(notif.id);
+      onRefresh?.();
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
   return (
     <div className="rounded-xl px-4 py-3 transition-opacity"
       style={{
@@ -123,6 +164,60 @@ function NotifItem({ notif, isRead, onDismiss, onRestore }: NotifItemProps) {
           <p className="text-[14px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
             {notif.body}
           </p>
+
+          {/* 快捷動作 */}
+          {!isRead && !actionDone && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {notif.type === "budget" && notif.meta?.category && !adjusting && (
+                <button
+                  onClick={() => setAdjusting(true)}
+                  className="text-[12px] font-semibold px-2.5 py-1 rounded-lg transition-opacity hover:opacity-80"
+                  style={{ background: `${SEVERITY_COLOR[notif.severity]}18`, color: SEVERITY_COLOR[notif.severity], border: `1px solid ${SEVERITY_COLOR[notif.severity]}40` }}>
+                  調整預算
+                </button>
+              )}
+              {notif.type === "bill" && notif.meta?.billId && (
+                <button
+                  onClick={handleMarkPaid}
+                  disabled={actionBusy}
+                  className="text-[12px] font-semibold px-2.5 py-1 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-50"
+                  style={{ background: "rgba(16,185,129,0.12)", color: "#10B981", border: "1px solid rgba(16,185,129,0.3)" }}>
+                  {actionBusy ? "處理中…" : "標記已繳"}
+                </button>
+              )}
+            </div>
+          )}
+          {!isRead && actionDone && (
+            <p className="mt-1.5 text-[12px] font-semibold" style={{ color: "#10B981" }}>✓ 已完成</p>
+          )}
+
+          {/* 調整預算 inline 表單 */}
+          {adjusting && (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>新預算 NT$</span>
+              <input
+                type="number"
+                min={1}
+                value={newAmount}
+                onChange={e => setNewAmount(e.target.value)}
+                className="w-24 text-[13px] px-2 py-1 rounded-lg outline-none"
+                style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+              />
+              <button
+                onClick={handleAdjustBudget}
+                disabled={actionBusy}
+                className="text-[12px] font-semibold px-2.5 py-1 rounded-lg disabled:opacity-50"
+                style={{ background: "rgba(59,130,246,0.15)", color: "#60A5FA", border: "1px solid rgba(59,130,246,0.3)" }}>
+                {actionBusy ? "…" : "確認"}
+              </button>
+              <button
+                onClick={() => setAdjusting(false)}
+                className="text-[12px] px-1.5 py-1 rounded-lg"
+                style={{ color: "var(--text-muted)" }}>
+                取消
+              </button>
+            </div>
+          )}
         </div>
         <button
           onClick={() => isRead ? onRestore(notif.id) : onDismiss(notif.id)}
@@ -138,7 +233,7 @@ function NotifItem({ notif, isRead, onDismiss, onRestore }: NotifItemProps) {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export default function NotificationPanel({ isDemo }: { isDemo: boolean }) {
+export default function NotificationPanel() {
   const [data,    setData]    = useState<NotificationsResponse | null>(null);
   const [open,    setOpen]    = useState(false);
   const [loading, setLoading] = useState(false);
@@ -148,13 +243,12 @@ export default function NotificationPanel({ isDemo }: { isDemo: boolean }) {
   useEffect(() => { setReadIds(loadReadIds()); }, []);
 
   const fetch_ = useCallback(() => {
-    if (isDemo) { setData(DEMO_NOTIFICATIONS as NotificationsResponse); return; }
     setLoading(true);
     fetch("/api/notifications")
       .then(r => r.json())
       .then((d: NotificationsResponse) => setData(d))
       .finally(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   useEffect(() => { fetch_(); }, [fetch_]);
 
@@ -285,7 +379,7 @@ export default function NotificationPanel({ isDemo }: { isDemo: boolean }) {
                           <div className="space-y-2">
                             {items.map(n => (
                               <NotifItem key={n.id} notif={n} isRead={false}
-                                onDismiss={dismiss} onRestore={restore} />
+                                onDismiss={dismiss} onRestore={restore} onRefresh={fetch_} />
                             ))}
                           </div>
                         </div>

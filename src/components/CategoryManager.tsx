@@ -93,7 +93,7 @@ function CustomRow({ cat, onDelete, onRename, onRetypeF }: CustomRowProps) {
 
 // ── Main component ──────────────────────────────────────────────────────────
 
-export default function CategoryManager({ isDemo }: { isDemo: boolean }) {
+export default function CategoryManager() {
   const [data,    setData]    = useState<CatData | null>(null);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState("");
@@ -102,13 +102,8 @@ export default function CategoryManager({ isDemo }: { isDemo: boolean }) {
   const [err,     setErr]     = useState("");
 
   const load = useCallback(() => {
-    if (isDemo) {
-      setData({ expense: [], income: [], custom: [], builtinExpense: ["飲食","交通","娛樂","購物","醫療","居住","教育","通訊","保險","水電","美容","運動","旅遊","訂閱","寵物","現金","轉帳","其他"], builtinIncome: ["薪資","獎金","兼職","投資","租金","退款","現金","轉帳","其他"] });
-      setLoading(false);
-      return;
-    }
     fetch("/api/categories").then(r => r.json()).then((d: CatData) => setData(d)).finally(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 

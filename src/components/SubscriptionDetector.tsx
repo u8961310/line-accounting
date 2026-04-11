@@ -377,12 +377,11 @@ interface VerifyItem {
   matchedTx?: { date: string; amount: number; note: string };
 }
 
-function VerifyPanel({ isDemo }: { isDemo: boolean }) {
+function VerifyPanel() {
   const [result,  setResult]  = useState<{ items: VerifyItem[]; foundCount: number; month: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
   function run() {
-    if (isDemo) { setResult({ items: [], foundCount: 0, month: "" }); return; }
     setLoading(true);
     fetch("/api/subscriptions/verify")
       .then(r => r.json())
@@ -483,7 +482,7 @@ function VerifyPanel({ isDemo }: { isDemo: boolean }) {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export default function SubscriptionDetector({ isDemo }: { isDemo: boolean }) {
+export default function SubscriptionDetector() {
   const [data,         setData]         = useState<SubscriptionsResponse | null>(null);
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState("");
@@ -492,13 +491,12 @@ export default function SubscriptionDetector({ isDemo }: { isDemo: boolean }) {
   const [viewMode,     setViewMode]     = useState<"list" | "tags">("list");
 
   const load = useCallback(() => {
-    if (isDemo) { setData({ items: [], monthlyTotal: 0, yearlyTotal: 0 }); setLoading(false); return; }
     setLoading(true);
     fetch("/api/subscriptions")
       .then(r => r.json())
       .then((d: SubscriptionsResponse) => setData(d))
       .finally(() => setLoading(false));
-  }, [isDemo]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -675,7 +673,7 @@ export default function SubscriptionDetector({ isDemo }: { isDemo: boolean }) {
       </div>
 
       {/* Verify panel */}
-      <VerifyPanel isDemo={isDemo} />
+      <VerifyPanel />
 
     </div>
   );

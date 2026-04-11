@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { DEMO_LOANS_RAW, DEMO_CREDIT_CARDS_RAW, DEMO_FIXED_EXPENSES } from "@/lib/demo-data";
-
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type EventType = "bill-due" | "statement" | "loan" | "fixed" | "subscription";
@@ -66,7 +64,7 @@ function DayEvents({ events }: DayEventsProps) {
 
 // ── Main component ────────────────────────────────────────────────────────
 
-export default function BillCalendar({ isDemo }: { isDemo: boolean }) {
+export default function BillCalendar() {
   const [events,   setEvents]   = useState<CalEvent[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [viewDate, setViewDate] = useState(() => new Date());
@@ -161,12 +159,6 @@ export default function BillCalendar({ isDemo }: { isDemo: boolean }) {
     const y = viewDate.getFullYear();
     const m = viewDate.getMonth();
 
-    if (isDemo) {
-      setEvents(build(DEMO_LOANS_RAW, DEMO_CREDIT_CARDS_RAW, DEMO_FIXED_EXPENSES.fixedExpenses, [], y, m));
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     Promise.all([
       fetch("/api/loans").then(r => r.json()),
@@ -182,7 +174,7 @@ export default function BillCalendar({ isDemo }: { isDemo: boolean }) {
         y, m,
       ));
     }).finally(() => setLoading(false));
-  }, [isDemo, viewDate, build]);
+  }, [viewDate, build]);
 
   const year       = viewDate.getFullYear();
   const month      = viewDate.getMonth();

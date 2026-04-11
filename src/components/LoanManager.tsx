@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { DEMO_LOANS_RAW, DEMO_CREDIT_CARDS_RAW } from "@/lib/demo-data";
 import { notifyFinanceChanged } from "@/lib/finance-events";
 
 interface LoanPayment {
@@ -187,7 +186,7 @@ function ModalFooter({ onCancel, onConfirm, confirmLabel }: { onCancel: () => vo
   );
 }
 
-export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
+export default function LoanManager() {
   const [loans, setLoans] = useState<LoanItem[]>([]);
   const [creditCards, setCreditCards] = useState<CreditCardItem[]>([]);
   const [subItems,   setSubItems]   = useState<{ paymentMethod: string; monthlyAmount: number }[]>([]);
@@ -243,11 +242,6 @@ export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      if (isDemo) {
-        setLoans((DEMO_LOANS_RAW as RawLoan[]).map(parseLoan));
-        setCreditCards((DEMO_CREDIT_CARDS_RAW as RawCreditCard[]).map(parseCreditCard));
-        return;
-      }
       const [lRes, cRes, sRes] = await Promise.all([
         fetch("/api/loans"),
         fetch("/api/credit-cards"),
@@ -264,7 +258,7 @@ export default function LoanManager({ isDemo = false }: { isDemo?: boolean }) {
     } finally {
       setLoading(false);
     }
-  }, [isDemo]);
+  }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
