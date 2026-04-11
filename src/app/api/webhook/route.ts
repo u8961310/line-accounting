@@ -3,7 +3,8 @@ import { verifySignature, replyMessage, replyRawMessage, getUserProfile } from "
 import { parseExpenseText } from "@/lib/parser";
 import { prisma } from "@/lib/db";
 import { matchCategoryRule } from "@/lib/category-rules";
-import { taipeiToday } from "@/lib/time";
+import { taipeiToday, taipeiTodayAsUTC } from "@/lib/time";
+import { inferMealTypeByTime, isFoodCategory, type MealType } from "@/lib/meal-type";
 import {
   buildRecordedMessage,
   buildSummaryMessage,
@@ -103,6 +104,45 @@ async function handleHelp(replyToken: string): Promise<void> {
   await replyRawMessage(replyToken, [buildHelpMessage()]);
 }
 
+// ── 三餐預算進度 helper ─────────────────────────────────────────────────────────
+const MEAL_LABELS: Record<MealType, string> = {
+  breakfast: "今日早餐",
+  lunch:     "今日午餐",
+  dinner:    "今日晚餐",
+};
+
+async function buildMealBudgetStatus(
+  userId: string,
+  mealType: MealType,
+): Promise<{ label: string; spent: number; budget: number; isOver: boolean } | undefined> {
+  const mb = await prisma.mealBudget.findUnique({
+    where: { userId_mealType: { userId, mealType } },
+  });
+  if (!mb || !mb.isActive) return undefined;
+
+  const start = taipeiTodayAsUTC();
+  const end = new Date(start.getTime() + 24 * 3600 * 1000);
+
+  const agg = await prisma.transaction.aggregate({
+    where: {
+      userId,
+      type: "支出",
+      mealType,
+      date: { gte: start, lt: end },
+    },
+    _sum: { amount: true },
+  });
+
+  const spent = Number(agg._sum.amount ?? 0);
+  const budget = Number(mb.amount);
+  return {
+    label: MEAL_LABELS[mealType],
+    spent,
+    budget,
+    isOver: spent > budget,
+  };
+}
+
 // ── 記帳處理 ───────────────────────────────────────────────────────────────────
 async function handleTextMessage(event: LineEvent, userId: string, text: string): Promise<void> {
   const replyToken = event.replyToken;
@@ -155,6 +195,12 @@ async function handleTextMessage(event: LineEvent, userId: string, text: string)
     create: { lineUserId: "dashboard_user", displayName: "Dashboard" },
   });
 
+  // 決定 mealType：parser 抽到的優先，否則若是飲食類 fallback 到時間
+  let finalMealType: MealType | null = parsed.mealType ?? null;
+  if (!finalMealType && parsed.type === "支出" && isFoodCategory(parsed.category)) {
+    finalMealType = inferMealTypeByTime(new Date());
+  }
+
   // 儲存交易（使用 AI 解析的日期，未指定則用台灣今天）
   const txDateStr = parsed.date ?? taipeiToday();
   const txDate = new Date(`${txDateStr}T00:00:00Z`);
@@ -171,6 +217,7 @@ async function handleTextMessage(event: LineEvent, userId: string, text: string)
         type: parsed.type,
         note: parsed.note,
         source: "line",
+        mealType: finalMealType ?? null,
       },
     });
   } catch {
@@ -184,7 +231,12 @@ async function handleTextMessage(event: LineEvent, userId: string, text: string)
           source: "line",
         },
       },
-      update: { category: parsed.category, type: parsed.type, note: parsed.note },
+      update: {
+        category: parsed.category,
+        type: parsed.type,
+        note: parsed.note,
+        mealType: finalMealType ?? null,
+      },
       create: {
         userId: dashUser.id,
         date: txDate,
@@ -193,9 +245,15 @@ async function handleTextMessage(event: LineEvent, userId: string, text: string)
         type: parsed.type,
         note: parsed.note,
         source: "line",
+        mealType: finalMealType ?? null,
       },
     });
   }
+
+  // 組 meal budget 進度
+  const mealBudgetStatus = finalMealType
+    ? await buildMealBudgetStatus(dashUser.id, finalMealType)
+    : undefined;
 
   // 回覆 Flex Message
   await replyRawMessage(replyToken, [buildRecordedMessage({
@@ -204,6 +262,7 @@ async function handleTextMessage(event: LineEvent, userId: string, text: string)
     category: parsed.category,
     note:     parsed.note,
     date:     txDate,
+    mealBudgetStatus,
   })]);
 }
 
