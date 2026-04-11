@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { taipeiToday } from "./time";
+import { normalizeMealType } from "./meal-type";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -11,6 +12,7 @@ export interface ParsedExpense {
   type: "收入" | "支出";
   note: string;
   date?: string; // YYYY-MM-DD，未指定則為 null
+  mealType?: "breakfast" | "lunch" | "dinner";
 }
 
 
@@ -26,7 +28,8 @@ export async function parseExpenseText(text: string, today?: string): Promise<Pa
   "category": "分類名稱",
   "type": "收入" 或 "支出",
   "note": "備註說明",
-  "date": "YYYY-MM-DD 或 null"
+  "date": "YYYY-MM-DD 或 null",
+  "mealType": "breakfast" | "lunch" | "dinner" 或 null
 }
 
 常見分類參考：飲食、交通、娛樂、購物、醫療、住房、帳單、貸款、薪資、獎金、現金、其他
@@ -42,7 +45,13 @@ export async function parseExpenseText(text: string, today?: string): Promise<Pa
 - 帳單：電信費、網路費、訂閱服務費
 - 貸款：貸款還款、信用卡繳費
 - 提款、領錢 → category: "現金", type: "支出"
-- date：若訊息含有日期（如「昨天」「3/28」「上週五」）則解析為 YYYY-MM-DD，否則為 null`;
+- date：若訊息含有日期（如「昨天」「3/28」「上週五」）則解析為 YYYY-MM-DD，否則為 null
+- mealType（僅當訊息內容與飲食有關時才設定）：
+  - 含「早餐」「早」「早上吃」「breakfast」→ "breakfast"
+  - 含「午餐」「中餐」「中午吃」「lunch」→ "lunch"
+  - 含「晚餐」「晚上吃」「dinner」→ "dinner"
+  - 亦可從上下文推斷（例：「麥當勞大麥克早餐套餐」→ breakfast）
+  - 無法判斷或非飲食類 → null`;
 
   try {
     const response = await client.messages.create({
@@ -79,6 +88,7 @@ export async function parseExpenseText(text: string, today?: string): Promise<Pa
     const note = String(parsed["note"] ?? "");
     const dateVal = parsed["date"];
     const date = typeof dateVal === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateVal) ? dateVal : undefined;
+    const mealType = normalizeMealType(parsed["mealType"]);
 
     if (!isFinite(amount) || amount <= 0) return null;
 
@@ -88,6 +98,7 @@ export async function parseExpenseText(text: string, today?: string): Promise<Pa
       type,
       note,
       date,
+      mealType,
     };
   } catch (error) {
     console.error("parseExpenseText error:", error);
