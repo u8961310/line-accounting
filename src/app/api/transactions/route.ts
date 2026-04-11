@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import * as XLSX from "xlsx";
 import { logAudit } from "@/lib/audit";
-import { taipeiToday } from "@/lib/time";
+import { taipeiToday, taipeiTodayAsUTC } from "@/lib/time";
 import { updateStreak } from "@/lib/streak";
+import { inferMealTypeByTime, isFoodCategory, normalizeMealType, type MealType } from "@/lib/meal-type";
 
 export const dynamic = "force-dynamic";
 
@@ -195,11 +196,18 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as {
       date: string; type: string; amount: number; category: string; note?: string; source?: string; force?: boolean;
+      mealType?: unknown;
     };
     const user = await prisma.user.findFirst({ where: { lineUserId: "dashboard_user" } });
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     const source = body.source ?? "manual";
+
+    // 決定 mealType：body 傳入優先 → 否則若是支出 + LINE 來源 + 飲食類 → 時間推論
+    let finalMealType: MealType | null = normalizeMealType(body.mealType) ?? null;
+    if (!finalMealType && body.type === "支出" && source === "line" && isFoodCategory(body.category)) {
+      finalMealType = inferMealTypeByTime(new Date());
+    }
 
     // 只對手動新增做重複預警（LINE webhook / CSV 匯入略過）
     if (source === "manual" && !body.force) {
@@ -236,6 +244,7 @@ export async function POST(request: NextRequest) {
         category: body.category,
         note: body.note ?? "",
         source,
+        mealType: finalMealType ?? null,
       },
     });
 
@@ -274,7 +283,44 @@ export async function POST(request: NextRequest) {
       streak = await updateStreak(user.id);
     } catch { /* 略過 */ }
 
-    return NextResponse.json({ id: tx.id, transferCandidate, streak });
+    // 三餐日預算進度（非關鍵，失敗略過）
+    let mealBudgetStatus = null;
+    if (finalMealType) {
+      try {
+        const mb = await prisma.mealBudget.findUnique({
+          where: { userId_mealType: { userId: user.id, mealType: finalMealType } },
+        });
+        if (mb && mb.isActive) {
+          const todayStart = taipeiTodayAsUTC();
+          const todayEnd = new Date(todayStart.getTime() + 24 * 3600 * 1000);
+          const agg = await prisma.transaction.aggregate({
+            where: {
+              userId: user.id,
+              type: "支出",
+              mealType: finalMealType,
+              date: { gte: todayStart, lt: todayEnd },
+            },
+            _sum: { amount: true },
+          });
+          const spent = Number(agg._sum.amount ?? 0);
+          const budget = Number(mb.amount);
+          const labels: Record<MealType, string> = {
+            breakfast: "今日早餐",
+            lunch:     "今日午餐",
+            dinner:    "今日晚餐",
+          };
+          mealBudgetStatus = {
+            mealType: finalMealType,
+            label: labels[finalMealType],
+            spent,
+            budget,
+            isOver: spent > budget,
+          };
+        }
+      } catch { /* 略過 */ }
+    }
+
+    return NextResponse.json({ id: tx.id, transferCandidate, streak, mealBudgetStatus });
   } catch (e: unknown) {
     // P2002：唯一約束衝突（同一天同來源同金額已記錄過）→ 回傳 409 而非 500
     if (
