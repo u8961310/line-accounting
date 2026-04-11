@@ -6,6 +6,7 @@ interface Settings {
   expenseAlertThreshold: number;
   incomeAlertThreshold:  number;
   balanceAlertThreshold: number;
+  hourlyRate:            number | null;
 }
 
 const inputClass =
@@ -13,7 +14,7 @@ const inputClass =
   " bg-[var(--bg-input)] border border-[var(--border)] focus:border-[var(--accent)]" +
   " text-[var(--text-primary)] placeholder-[var(--text-muted)]";
 
-const FIELDS: { key: keyof Settings; label: string; icon: string; desc: string }[] = [
+const ALERT_FIELDS: { key: "expenseAlertThreshold" | "incomeAlertThreshold" | "balanceAlertThreshold"; label: string; icon: string; desc: string }[] = [
   { key: "expenseAlertThreshold", label: "大額支出警報", icon: "💸", desc: "單筆支出超過此金額時，LINE 推播提醒" },
   { key: "incomeAlertThreshold",  label: "大額收入確認", icon: "💰", desc: "單筆收入超過此金額時，LINE 推播確認" },
   { key: "balanceAlertThreshold", label: "餘額偏低警戒", icon: "⚠️", desc: "帳戶餘額低於此金額時，LINE 推播警告" },
@@ -30,6 +31,11 @@ export default function AlertSettings() {
   const [saved, setSaved]       = useState(false);
   const [loading, setLoading]   = useState(true);
 
+  // 時薪設定（獨立欄位，單獨儲存）
+  const [hourlyDraft,  setHourlyDraft]  = useState<string>("");
+  const [hourlySaving, setHourlySaving] = useState(false);
+  const [hourlySaved,  setHourlySaved]  = useState(false);
+
   const fetchSettings = useCallback(async () => {
     try {
       const res = await fetch("/api/user-settings");
@@ -40,6 +46,7 @@ export default function AlertSettings() {
         incomeAlertThreshold:  String(data.incomeAlertThreshold),
         balanceAlertThreshold: String(data.balanceAlertThreshold),
       });
+      setHourlyDraft(data.hourlyRate != null ? String(data.hourlyRate) : "");
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, []);
@@ -50,12 +57,10 @@ export default function AlertSettings() {
     setSaving(true);
     setSaved(false);
     try {
-      const body: Partial<Settings> = {};
-      for (const f of FIELDS) {
+      const body: Partial<Record<string, number>> = {};
+      for (const f of ALERT_FIELDS) {
         const val = parseInt(draft[f.key] ?? "0");
-        if (!isNaN(val) && val >= 0) {
-          body[f.key] = val;
-        }
+        if (!isNaN(val) && val >= 0) body[f.key] = val;
       }
       await fetch("/api/user-settings", {
         method: "PATCH",
@@ -69,9 +74,27 @@ export default function AlertSettings() {
     finally { setSaving(false); }
   }
 
-  const hasChanges = settings && FIELDS.some(f =>
+  async function handleHourlySave() {
+    setHourlySaving(true);
+    setHourlySaved(false);
+    try {
+      const val = hourlyDraft === "" ? null : parseInt(hourlyDraft);
+      await fetch("/api/user-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hourlyRate: isNaN(val as number) ? null : val }),
+      });
+      await fetchSettings();
+      setHourlySaved(true);
+      setTimeout(() => setHourlySaved(false), 2000);
+    } catch (e) { console.error(e); }
+    finally { setHourlySaving(false); }
+  }
+
+  const hasChanges = settings && ALERT_FIELDS.some(f =>
     String(settings[f.key]) !== draft[f.key]
   );
+  const hourlyChanged = settings && hourlyDraft !== (settings.hourlyRate != null ? String(settings.hourlyRate) : "");
 
   if (loading) {
     return (
@@ -95,10 +118,10 @@ export default function AlertSettings() {
         </p>
       </div>
 
-      {/* Fields */}
+      {/* Alert thresholds */}
       <div className="rounded-2xl border overflow-hidden"
         style={{ background: "var(--bg-card)", borderColor: "var(--border)", boxShadow: "var(--card-shadow)" }}>
-        {FIELDS.map((f, i) => (
+        {ALERT_FIELDS.map(f => (
           <div key={f.key} className="px-5 py-5 border-b last:border-0"
             style={{ borderColor: "var(--border-inner)" }}>
             <div className="flex items-start gap-3">
@@ -149,6 +172,62 @@ export default function AlertSettings() {
               opacity: saving ? 0.6 : 1,
             }}>
             {saving ? "儲存中…" : "儲存"}
+          </button>
+        </div>
+      </div>
+
+      {/* 時薪 / 購買力設定 */}
+      <div className="rounded-2xl border overflow-hidden"
+        style={{ background: "var(--bg-card)", borderColor: "var(--border)", boxShadow: "var(--card-shadow)" }}>
+        <div className="px-5 py-5">
+          <div className="flex items-start gap-3">
+            <span className="text-xl flex-shrink-0 mt-0.5">⏱️</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-[14px] mb-0.5" style={{ color: "var(--text-primary)" }}>我的時薪</p>
+              <p className="text-[12px] mb-3" style={{ color: "var(--text-muted)" }}>
+                設定後，交易記錄列表的金額上將顯示「≈ 工作 X 分鐘」提示
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-[13px] font-medium" style={{ color: "var(--text-sub)" }}>NT$/hr</span>
+                <input
+                  className={inputClass}
+                  style={{ maxWidth: "160px" }}
+                  type="number"
+                  min={0}
+                  step={10}
+                  placeholder="例：200"
+                  value={hourlyDraft}
+                  onWheel={e => e.currentTarget.blur()}
+                  onChange={e => setHourlyDraft(e.target.value)}
+                />
+                {settings?.hourlyRate != null && (
+                  <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
+                    目前：NT$ {fmt(settings.hourlyRate)}/hr
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="px-5 py-4 flex items-center justify-between"
+          style={{ background: "var(--bg-input)", borderTop: "1px solid var(--border-inner)" }}>
+          {hourlySaved ? (
+            <span className="text-[13px] font-semibold" style={{ color: "#10b981" }}>✓ 已儲存</span>
+          ) : (
+            <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
+              {hourlyChanged ? "有未儲存的變更" : "設定已同步"}
+            </span>
+          )}
+          <button
+            onClick={handleHourlySave}
+            disabled={hourlySaving || !hourlyChanged}
+            className="px-5 py-2 rounded-xl text-[13px] font-bold transition-opacity"
+            style={{
+              background: hourlyChanged ? "var(--accent)" : "var(--border)",
+              color: hourlyChanged ? "#fff" : "var(--text-muted)",
+              opacity: hourlySaving ? 0.6 : 1,
+            }}>
+            {hourlySaving ? "儲存中…" : "儲存"}
           </button>
         </div>
       </div>

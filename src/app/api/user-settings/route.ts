@@ -20,6 +20,7 @@ export async function GET(): Promise<NextResponse> {
       expenseAlertThreshold: settings?.expenseAlertThreshold ?? 3000,
       incomeAlertThreshold:  settings?.incomeAlertThreshold  ?? 10000,
       balanceAlertThreshold: settings?.balanceAlertThreshold ?? 5000,
+      hourlyRate:            settings?.hourlyRate            ?? null,
     });
   } catch (e) {
     console.error("[user-settings]", e);
@@ -36,12 +37,14 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
       expenseAlertThreshold?: number;
       incomeAlertThreshold?:  number;
       balanceAlertThreshold?: number;
+      hourlyRate?:            number | null;
     };
 
-    const data: Record<string, number> = {};
+    const data: Record<string, number | null> = {};
     if (body.expenseAlertThreshold !== undefined) data.expenseAlertThreshold = body.expenseAlertThreshold;
     if (body.incomeAlertThreshold  !== undefined) data.incomeAlertThreshold  = body.incomeAlertThreshold;
     if (body.balanceAlertThreshold !== undefined) data.balanceAlertThreshold = body.balanceAlertThreshold;
+    if (body.hourlyRate            !== undefined) data.hourlyRate            = body.hourlyRate;
 
     const settings = await prisma.userSettings.upsert({
       where:  { userId: user.id },
@@ -53,6 +56,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
       expenseAlertThreshold: settings.expenseAlertThreshold,
       incomeAlertThreshold:  settings.incomeAlertThreshold,
       balanceAlertThreshold: settings.balanceAlertThreshold,
+      hourlyRate:            settings.hourlyRate ?? null,
     });
   } catch (e) {
     console.error("[user-settings]", e);

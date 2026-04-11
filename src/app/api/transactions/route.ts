@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import * as XLSX from "xlsx";
 import { logAudit } from "@/lib/audit";
 import { taipeiToday } from "@/lib/time";
+import { updateStreak } from "@/lib/streak";
 
 export const dynamic = "force-dynamic";
 
@@ -267,7 +268,13 @@ export async function POST(request: NextRequest) {
       }
     } catch { /* 非關鍵，略過 */ }
 
-    return NextResponse.json({ id: tx.id, transferCandidate });
+    // 更新記帳連續天數（非關鍵，失敗不影響記帳）
+    let streak = null;
+    try {
+      streak = await updateStreak(user.id);
+    } catch { /* 略過 */ }
+
+    return NextResponse.json({ id: tx.id, transferCandidate, streak });
   } catch (e: unknown) {
     // P2002：唯一約束衝突（同一天同來源同金額已記錄過）→ 回傳 409 而非 500
     if (

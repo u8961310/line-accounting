@@ -654,6 +654,10 @@ export default function DashboardPage() {
   const [auditPages,   setAuditPages]   = useState(1);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditFilter,  setAuditFilter]  = useState<string>("");
+  const [streak,       setStreak]       = useState<{ currentStreak: number; longestStreak: number } | null>(null);
+  const [hourlyRate,   setHourlyRate]   = useState<number | null>(null);
+  const [hourlyRateInput, setHourlyRateInput] = useState<string>("");
+  const [hourlyRateSaving, setHourlyRateSaving] = useState(false);
   const TX_LIMIT = 30;
   const lineUserId = "dashboard_user";
   const currentMonth = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; })();
@@ -679,6 +683,11 @@ export default function DashboardPage() {
       setNetWorth(await nw.json() as NetWorth);
       const bgData = await bg.json() as { budgets: { category: string; amount: number; spent: number }[] };
       setBudgetOverview(bgData.budgets ?? []);
+      // 記帳連續天數 + 時薪設定
+      fetch("/api/streak").then(r => r.json()).then(d => setStreak(d as { currentStreak: number; longestStreak: number })).catch(() => {});
+      fetch("/api/user-settings").then(r => r.json()).then((d: { hourlyRate?: number | null }) => {
+        if (d.hourlyRate != null) { setHourlyRate(d.hourlyRate); setHourlyRateInput(String(d.hourlyRate)); }
+      }).catch(() => {});
       // 上月資料（月份對比卡用）
       const prevDate = new Date(); prevDate.setMonth(prevDate.getMonth() - 1);
       const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
@@ -1542,6 +1551,13 @@ export default function DashboardPage() {
               </svg>
             </div>
             <span className="hidden sm:inline text-[15px] font-extrabold tracking-tight whitespace-nowrap" style={{ color: "var(--text-primary)" }}>個人記帳</span>
+            {streak && streak.currentStreak >= 2 && (
+              <span title={`連續記帳 ${streak.currentStreak} 天｜最長 ${streak.longestStreak} 天`}
+                className="hidden sm:flex items-center gap-0.5 text-[12px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{ background: "rgba(251,146,60,0.15)", color: "#F97316" }}>
+                🔥{streak.currentStreak}
+              </span>
+            )}
           </div>
 
           {/* 分隔線 */}
@@ -4613,14 +4629,21 @@ export default function DashboardPage() {
                                 }}
                               />
                             ) : (
-                              <p
-                                className="text-[16px] font-black cursor-pointer rounded px-1 transition-colors hover:bg-white/5"
-                                title="點擊編輯金額"
-                                style={{ color: tx.type === "收入" ? "#10B981" : "#EF4444" }}
-                                onClick={() => { setEditingAmountId(tx.id); setEditingAmountVal(String(tx.amount)); }}
-                              >
-                                {tx.type === "收入" ? "+" : "−"}NT$ {fmt(tx.amount)}
-                              </p>
+                              <div className="flex flex-col items-end">
+                                <p
+                                  className="text-[16px] font-black cursor-pointer rounded px-1 transition-colors hover:bg-white/5"
+                                  title="點擊編輯金額"
+                                  style={{ color: tx.type === "收入" ? "#10B981" : "#EF4444" }}
+                                  onClick={() => { setEditingAmountId(tx.id); setEditingAmountVal(String(tx.amount)); }}
+                                >
+                                  {tx.type === "收入" ? "+" : "−"}NT$ {fmt(tx.amount)}
+                                </p>
+                                {tx.type === "支出" && hourlyRate && hourlyRate > 0 && (() => {
+                                  const mins = Math.round(tx.amount / hourlyRate * 60);
+                                  const label = mins < 60 ? `≈ ${mins} 分` : `≈ ${Math.floor(mins / 60)} 時 ${mins % 60} 分`;
+                                  return <span className="text-[10px] px-1" style={{ color: "var(--text-muted)" }}>{label}</span>;
+                                })()}
+                              </div>
                             )}
                           </div>
 

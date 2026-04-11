@@ -22,6 +22,11 @@ export function taipeiToday(): string {
   return toTaipeiDate();
 }
 
+/** 取得昨天（台灣時間）的 YYYY-MM-DD */
+export function taipeiYesterday(): string {
+  return toTaipeiDate(new Date(Date.now() - 24 * 3600 * 1000));
+}
+
 /** 取得台灣時間的月份字串 YYYY-MM */
 export function taipeiMonth(): string {
   return taipeiToday().slice(0, 7);

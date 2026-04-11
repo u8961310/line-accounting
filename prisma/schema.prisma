@@ -24,6 +24,7 @@ model User {
   userCategories       UserCategory[]
   tasks                Task[]
   settings             UserSettings?
+  streak               UserStreak?
   categoryRules        CategoryRule[]
   personalDebts        PersonalDebt[]
 }
@@ -259,7 +260,19 @@ model UserSettings {
   expenseAlertThreshold Int      @default(3000)
   incomeAlertThreshold  Int      @default(10000)
   balanceAlertThreshold Int      @default(5000)
+  hourlyRate            Int?     // 時薪（NT$），用於支出購買力換算
   updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserStreak {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  currentStreak   Int       @default(0)
+  longestStreak   Int       @default(0)
+  lastRecordDate  String?   // YYYY-MM-DD，台灣時間
+  updatedAt       DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

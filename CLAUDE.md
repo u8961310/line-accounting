@@ -362,12 +362,12 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] 🔴 **快捷記帳一鍵組合**：分析近 30 天高頻交易（同 category+amount±10% 出現 ≥3 次），自動產生快捷鈕，顯示在交易頁頂端，點擊直接寫入；支援手動釘選/排序，存 localStorage
 - [x] 🔴 **轉帳主動配對**：新增交易後後端查近 3 天同金額反向交易，有則回傳 candidate；前端 toast 提示「這筆是不是轉帳？」一鍵確認，兩筆同時改為「轉帳」分類並互相關聯（`Transaction.transferPairId`）
 - ~~**群組分帳 / AA 制**~~ → 不需要
-- [ ] 🟡 **借貸往來追蹤**：新表 `PersonalDebt { counterparty, direction(owed_to_me/i_owe), amount, note, createdAt, settledAt }`，與正式 transactions 分開但可一鍵轉成正式入帳；Dashboard 工具區新分頁
+- [x] 🟡 **借貸往來追蹤**：新表 `PersonalDebt { counterparty, direction(owed_to_me/i_owe), amount, note, createdAt, settledAt }`，與正式 transactions 分開但可一鍵轉成正式入帳；Dashboard 工具區新分頁
 - ~~**電子發票載具整合**~~ → 個人無法申請官方 API（需 ISO 27001 認證），不做
 
 ### Gamification（🟢 低）
-- [ ] 🟢 **記帳連續天數**：新表 `UserStreak { currentStreak, longestStreak, lastRecordDate }`，每次記帳後檢查是否續日；Dashboard Header 顯示「🔥 N 天」徽章，里程碑（7/30/100 天）解鎖獎章；配合 kogao LINE Bot 早上推播「昨天還沒記帳喔！」
-- [ ] 🟢 **支出購買力換算**：新增交易後 hover 金額顯示「= 工作 X 分鐘」，根據設定中的時薪換算；設定頁加入「我的時薪」欄位
+- [x] 🟢 **記帳連續天數**：新表 `UserStreak { currentStreak, longestStreak, lastRecordDate }`，每次記帳後檢查是否續日；Dashboard Header 顯示「🔥 N 天」徽章，里程碑（7/30/100 天）解鎖獎章；配合 kogao LINE Bot 早上推播「昨天還沒記帳喔！」
+- [x] 🟢 **支出購買力換算**：新增交易後 hover 金額顯示「= 工作 X 分鐘」，根據設定中的時薪換算；設定頁加入「我的時薪」欄位
 - [ ] 🟢 **位置記帳**：手機 PWA 用 Geolocation API 取得 GPS，比對 Google Places API 自動帶入店家名稱到 note 欄位
 
 ### 聽力追蹤（🟡 中）
@@ -401,7 +401,7 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 - [x] 🟡 **異常支出自動寫 Notion 警示頁**：整合在 monthly-report cron，命中時 append 到「財務警示」
 - [x] 🟡 **訂閱漲價自動標註**：整合在 monthly-report cron，比對後 append 到 Notion 訂閱 DB
 - [x] 🟡 **目標達成里程碑自動歸檔**：PATCH `/api/goals/[id]` 偵測 savedAmount 剛達標即觸發，建 Notion 紀念頁
-- [ ] 🟢 **消費性格 AI 報告每季自動歸檔**：每季 1 號（1/4/7/10 月）自動執行消費性格分析並寫到 Notion，可觀察性格演變史
+- [x] 🟢 **消費性格 AI 報告每季自動歸檔**：每季 1 號（1/4/7/10 月）自動執行消費性格分析並寫到 Notion，可觀察性格演變史
 
 ---
 
