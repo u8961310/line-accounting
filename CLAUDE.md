@@ -1,157 +1,185 @@
 # LINE 記帳系統
 
-## 可用 Skills（輸入 `/` 觸發）
+## Skills（輸入 `/` 觸發）
 | Skill | 用途 |
 |-------|------|
-| `/todo scan` | 盤點 CLAUDE.md 待辦，按優先序列出並給建議 |
-| `/todo done [關鍵字] [備註]` | 將指定 TODO 標記為完成並補充實作備註 |
-| `/security-check` | 逐項核查 8 個安全漏洞現況 |
+| `/security-check` | 逐項核查安全漏洞現況 |
 | `/new-bank-adapter [銀行名] [source] [欄位]` | 新增銀行 CSV adapter |
 | `/mcp-add [工具名] [描述]` | 新增 MCP 工具並更新文件 |
-| `/update-guide` | 功能完成後判斷使用說明是否需要更新，若需要則直接修改 UserGuide.tsx |
+| `/update-guide` | 功能完成後更新 UserGuide.tsx |
 | `/deploy` | 部署 line-accounting 到 Zeabur |
+
+---
 
 ## 技術棧
 - Next.js 14 App Router + TypeScript strict mode
-- Supabase (PostgreSQL) + Prisma ORM
+- PostgreSQL + Prisma ORM（Zeabur 托管）
 - LINE Messaging API (@line/bot-sdk)
 - Claude API (@anthropic-ai/sdk)
 - Notion API (@notionhq/client) — 單向同步，不回寫
 - Tailwind CSS + Recharts
-- chardet + iconv-lite — CSV 編碼處理
-- papaparse — CSV 解析
+- chardet + iconv-lite — CSV 編碼處理 / papaparse — CSV 解析
+
+---
 
 ## 專案結構
 ```
 src/
 ├── app/
 │   ├── api/
-│   │   ├── webhook/                # LINE Bot 入口
-│   │   ├── summary/                # Dashboard 統計（支援 ?month= 篩選）
-│   │   ├── transactions/           # 交易 CRUD（支援 note/month/exportCsv 參數）
-│   │   ├── balances/               # 帳戶餘額
-│   │   ├── budgets/                # 預算設定（GET/PUT/DELETE ?category=）
-│   │   ├── loans/                  # 貸款 CRUD
-│   │   ├── credit-cards/           # 信用卡 & 帳單 CRUD
-│   │   ├── fixed-expenses/         # 固定支出 CRUD
-│   │   ├── goals/                  # 財務目標 CRUD（含 linkedSource）
-│   │   ├── net-worth/snapshots/    # 淨資產歷史快照（upsert by month）
-│   │   ├── payees/                 # 帳號對照 CRUD
-│   │   ├── transfer-candidates/    # 疑似轉帳配對
-│   │   ├── duplicate-candidates/   # 疑似重複交易（同來源+類型+金額+日期±2天，常態消費≥4次略過）
-│   │   ├── import/                 # CSV 匯入
-│   │   ├── import-pdf/             # PDF 匯入（KGI 銀行）
-│   │   ├── annual-report/          # 年度財報（?year=YYYY）
-│   │   ├── account-flow/           # 帳戶月度流量（?months=N）
-│   │   ├── notifications/          # 通知中心（預算/帳單/目標警示）
-│   │   ├── subscriptions/          # 訂閱偵測（GET 偵測+合併標記 / PUT 更新標記）
-│   │   ├── health-score/snapshots/ # 財務健康評分歷史快照（upsert by month）
-│   │   ├── print-report/           # 列印月報（正式財務會計報表 HTML，自動 print）
-│   │   ├── print-annual-report/    # 列印年報（正式年度財報 HTML，自動 print）
-│   │   ├── savings-challenge/      # 存錢挑戰（GET/PUT，含 linkedGoalId）
-│   │   ├── cron/monthly-snapshot/   # 月度快照（淨資產+健康分數），Cronicle 每月 1 號觸發
-│   │   ├── auth/                   # 登入驗證
-│   │   └── health/                 # 健康檢查
-│   ├── dashboard/                  # 前端主頁面（單頁 SPA，5 主Tab + 進階分析 / 財務規劃 / 工具 下拉）
-│   └── login/                      # 登入頁
-├── components/
-│   ├── CsvImport.tsx               # CSV/XLS 匯入元件（自帶兩欄佈局）
-│   ├── LoanManager.tsx             # 負債管理（貸款 + 信用卡）
-│   ├── BudgetManager.tsx           # 預算控制
-│   ├── FixedExpenseManager.tsx     # 固定支出管理（含損益平衡點）
-│   ├── PayeeManager.tsx            # 帳號對照
-│   ├── DebtOptimizer.tsx           # 還債優化（雪球法 vs 雪崩法）
-│   ├── AnnualReport.tsx            # 年度財報（進階分析）
-│   ├── AdvancedAnalysis.tsx        # 進階分析（退休/FIRE/收入穩定/固定vs變動/帳戶流量/消費預測）
-│   ├── NotificationPanel.tsx       # 通知中心（Header 鈴鐺）
-│   ├── SubscriptionDetector.tsx    # 訂閱偵測（自動識別重複交易，支援確認/排除/標籤）
-│   ├── BillCalendar.tsx            # 帳單日曆（信用卡截止/結帳日、貸款還款日、固定支出）
-│   ├── SavingsChallenge.tsx        # 存錢挑戰（52週遞增/遞減/每週固定/每月固定，可連動目標）
-│   ├── SavingsPlan.tsx             # 儲蓄規劃（緊急備用金 + 學習目標 + 研究所 整合看板）
-│   ├── GradSchoolPlanner.tsx       # 研究所規劃（2028/09 入學，含行動建議）
-│   ├── EducationProgramPlanner.tsx # 教育學程規劃（自費課程分期，含行動建議）
-│   └── UserGuide.tsx               # 使用說明（資料流 + 工作流程 + 功能入口對照）
+│   │   ├── webhook/                 # LINE Bot 入口（verifySignature 最先呼叫）
+│   │   ├── transactions/            # CRUD + batch-delete + merge + split + categories
+│   │   ├── summary/                 # Dashboard 統計（?month= 篩選）
+│   │   ├── balances/                # 帳戶餘額
+│   │   ├── budgets/                 # 預算 CRUD（?category=）
+│   │   ├── loans/                   # 貸款 CRUD + payments + topup
+│   │   ├── credit-cards/            # 信用卡 & 帳單 CRUD
+│   │   ├── fixed-expenses/          # 固定支出 CRUD
+│   │   ├── goals/                   # 財務目標 CRUD（含 linkedSource）
+│   │   ├── net-worth/snapshots/     # 淨資產快照（upsert by month）
+│   │   ├── health-score/snapshots/  # 健康評分快照（upsert by month）
+│   │   ├── streak/                  # 記帳連續天數 GET
+│   │   ├── user-settings/           # 警報門檻 + 時薪設定
+│   │   ├── notifications/           # 通知中心（預算/帳單/目標警示）
+│   │   ├── subscriptions/           # 訂閱偵測 + /verify
+│   │   ├── import/                  # CSV/XLS 匯入
+│   │   ├── import-json/             # JSON 備份還原
+│   │   ├── import-pdf/              # PDF 匯入（KGI 銀行）
+│   │   ├── duplicate-candidates/    # 疑似重複交易
+│   │   ├── transfer-pair/           # 轉帳配對
+│   │   ├── personal-debts/          # 借貸往來
+│   │   ├── category-rules/          # AI 分類學習規則 CRUD
+│   │   ├── anomaly-detection/       # z-score 異常支出偵測
+│   │   ├── ai-insight/              # AI 月度洞察
+│   │   ├── ai-personality-report/   # 消費性格 AI 報告
+│   │   ├── annual-report/           # 年度財報（?year=YYYY）
+│   │   ├── account-flow/            # 帳戶月度流量
+│   │   ├── quick-entries/           # 快捷記帳
+│   │   ├── tasks/                   # 待辦任務 CRUD
+│   │   ├── audit-logs/              # Audit log（含 /stream SSE）
+│   │   ├── mcp/                     # MCP HTTP endpoint（x-api-key 驗證）
+│   │   ├── cron/
+│   │   │   ├── monthly-snapshot/    # 每月 1 日 → 淨資產+健康分數快照
+│   │   │   ├── monthly-report/      # 每月 1 日 → AI 月報+異常+訂閱漲價 → Notion
+│   │   │   ├── annual-report/       # 每年 1/1 → 年度財報 → Notion
+│   │   │   └── quarterly-personality-report/  # 每季 1 日 → 消費性格 AI → Notion
+│   │   ├── auth/login/              # 登入（rate limit + timingSafeEqual）
+│   │   └── health/                  # 健康檢查
+│   ├── dashboard/page.tsx           # 主頁面 SPA（主 Tab + 進階分析/規劃/工具下拉）
+│   └── login/
+├── components/                      # 各功能元件（略，見 src/components/）
 ├── lib/
-│   ├── db.ts                       # Prisma singleton
-│   ├── parser.ts                   # AI 解析記帳文字（claude-haiku）
-│   ├── line.ts                     # LINE 工具函式
-│   ├── line-messages.ts            # LINE 訊息組裝
-│   ├── notion.ts                   # Notion 同步
-│   ├── session.ts                  # Session 管理
-│   ├── demo-data.ts                # Demo 模式假資料（?demo=1）
-│   ├── themes.ts                   # 主題色彩系統
+│   ├── db.ts                        # Prisma singleton
+│   ├── time.ts                      # 台灣時區工具（taipeiToday/Yesterday/Month/AsUTC）
+│   ├── streak.ts                    # 連續天數更新邏輯
+│   ├── audit.ts                     # Audit log 寫入
+│   ├── parser.ts                    # AI 解析記帳文字（claude-haiku）
+│   ├── line.ts                      # LINE 工具函式
+│   ├── session.ts                   # Session 管理（iron-session）
+│   ├── category-rules.ts            # 分類規則比對
+│   ├── notion.ts                    # Notion 同步
+│   ├── themes.ts                    # 主題色彩系統
+│   ├── quotes.ts                    # 每日財務箴言
+│   ├── demo-data.ts                 # Demo 模式假資料（?demo=1）
 │   └── csv/
-│       ├── types.ts
-│       ├── encoding.ts
-│       ├── detector.ts
-│       ├── index.ts
-│       └── adapters/
-│           ├── tbank.ts
-│           ├── cathay_bank.ts
-│           ├── esun_bank.ts
-│           ├── ctbc_bank.ts
-│           ├── kgi_bank.ts
-│           ├── mega_bank.ts
-│           ├── sinopac_bank.ts
-│           ├── yuanta_bank.ts
-│           ├── cathay_cc.ts
-│           ├── esun_cc.ts
-│           ├── ctbc_cc.ts
-│           ├── taishin_cc.ts
-│           ├── sinopac_cc.ts
-│           └── ai_fallback.ts
-└── mcp/                            # MCP server（tsx 直接執行，修改後需 npm run build 重新編譯）
+│       ├── detector.ts / index.ts / types.ts / encoding.ts / transfer.ts
+│       └── adapters/                # tbank / cathay / esun / ctbc / kgi / mega /
+│                                    # sinopac / yuanta / taishin / ai_fallback 等
+└── mcp/
+    ├── createMcpServer.ts           # MCP 工具定義（HTTP + stdio 共用）
+    └── server.ts                    # stdio transport 包裝（npx tsx 直接執行）
 ```
+
+---
 
 ## 環境變數
 ```
+# 資料庫
 DATABASE_URL
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+# LINE
 LINE_CHANNEL_SECRET
 LINE_CHANNEL_ACCESS_TOKEN
+
+# AI
 ANTHROPIC_API_KEY
+
+# Notion
 NOTION_TOKEN
 NOTION_TRANSACTIONS_DB_ID
+NOTION_SUBSCRIPTIONS_DB_ID
+NOTION_MONTHLY_REPORT_PAGE_ID
+NOTION_ANNUAL_REPORT_PAGE_ID
+NOTION_QUARTERLY_REPORT_PAGE_ID     # 季度消費性格報告歸檔頁面
+NOTION_ANOMALY_PAGE_ID
+NOTION_MILESTONES_PAGE_ID
+NOTION_SAVINGS_SOURCE               # 連動帳戶 source 代碼（如 mega_bank）
+
+# 認證
+SESSION_SECRET                      # ≥ 32 字元
+INTERNAL_API_KEY                    # kogao → line-accounting API key
+CRON_SECRET                         # Cronicle → cron API Bearer token
+ADMIN_PASSWORD
 ```
+
+---
 
 ## 常用指令
 ```bash
 npm run dev
-npm run build                            # 重新編譯 MCP server（tsx → dist/mcp/server.js）
-npx prisma migrate dev --name [說明]    # ⚠️ 先關閉 dev server（DLL lock）
-npx prisma migrate deploy               # 套用手動建立的 migration
-npx prisma generate                     # migration 後重新產生 client
+npx prisma migrate dev --name [說明]   # ⚠️ 先關閉 dev server（DLL lock）
+npx prisma migrate deploy              # 套用手動建立的 migration（Zeabur 用這個）
+npx prisma generate                    # migration 後重新產生 client
 npx prisma studio
 ```
+
+---
 
 ## 開發慣例
 - Server Component 為預設，需互動才加 `"use client"`
 - 禁止使用 `any`
 - 環境變數從 `process.env` 取，不做 default value
+- **時區**：容器是 UTC，所有「當前日期」計算一律用 `src/lib/time.ts`
+  - `taipeiToday()` / `taipeiYesterday()` / `taipeiMonth()` / `taipeiTodayAsUTC()`
+  - 禁用：`new Date().toISOString().split("T")[0]`、`new Date().getFullYear()` 等
+  - 例外：Prisma 存的 Date 欄位（UTC 午夜）讀出來 `.toISOString().split("T")[0]` 仍正確
 - Notion 同步一律不 `await`，錯誤只 `console.error` 不 `throw`
 - LINE webhook 永遠回 200，錯誤放在 reply 內容
 - CSV 每筆匯入後 `sleep(300ms)`
-- 重複偵測條件：同 `user_id + date + amount + source`
+- 重複偵測：同 `userId + date + amount + source`（P2002 → 409）
 - git commit 用 conventional commits 格式
-- **React 子元件（含 input）必須定義在父元件函式外部**，否則每次 render 失焦
-- Demo 模式：`useRef(typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1")`
-- 轉帳分類不列為收入（summary API 的 `byCategory` loop 有 `continue` 判斷）
+- React 子元件（含 input）必須定義在父元件函式外部，否則每次 render 失焦
+- Demo 模式：URL `?demo=1` 觸發，`useRef` 讀取避免 SSR 問題
+
+---
+
+## 認證架構
+| 端點類型 | 驗證方式 |
+|---------|---------|
+| Dashboard 頁面 / 大部分 API | iron-session（middleware） |
+| kogao → line-accounting | `x-api-key: INTERNAL_API_KEY`（middleware） |
+| `/api/cron/*` | `Authorization: Bearer CRON_SECRET`（route 自驗） |
+| `/api/webhook` | LINE `x-line-signature`（route 最先驗） |
+| `/api/mcp` | `x-api-key: INTERNAL_API_KEY`（route 自驗） |
+| `/api/health` | 公開，無敏感資料 |
+
+---
 
 ## 資料流
-
 **LINE 記帳**
 ```
 LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
-→ upsert user → 存 transactions (source: "line") → replyMessage
-→ 背景 syncTransactionToNotion
+→ 存 transactions → updateStreak → replyMessage
+→ 背景：checkBudgetAlert / checkBalanceAlert / 大額警示
 ```
 
 **CSV 匯入**
 ```
-上傳檔案 → 轉 UTF-8 → detectSource → getAdapter → parse
-→ 去重 → 存 transactions → 背景 syncTransactionToNotion
+上傳 → 轉 UTF-8 → detectSource → getAdapter → parse
+→ 比對 CategoryRule → 比對訂閱關鍵字 → 去重 → 存 transactions
 ```
+
+---
 
 ## 記帳分類
 ```
@@ -160,20 +188,34 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 通用：現金 / 轉帳
 ```
 
-## 參考文件
-- `agent_docs/csv-adapters.md` — CSV 銀行代碼對應、adapter 位置
-- `agent_docs/prisma-schema.md` — Prisma 模型說明、migration 注意事項
-- `agent_docs/notion.md` — Notion 欄位對應、訂閱資料來源
+---
 
 ## 部署（Zeabur）
 - Project ID: `69d2656c18daef21c603e19c`
 - Service ID: `69d265b318daef21c603e1c2`
-- Redeploy 指令：`npx zeabur@latest deploy --project-id 69d2656c18daef21c603e19c --service-id 69d265b318daef21c603e1c2 --json`
+- URL: `https://accoung.zeabur.app`
+- Redeploy：`npx zeabur@latest deploy --project-id 69d2656c18daef21c603e19c --service-id 69d265b318daef21c603e1c2 --json`
 - 健康檢查：`GET /api/health`
 
-## MCP 工具清單
+---
 
-### 已完成
+## Cronicle 排程
+| 排程 | 時間（台灣） | 端點 |
+|------|------------|------|
+| 每日早報 | 08:00 | kogao `/api/cron/morning-report` |
+| 每日記帳提醒 | 21:00 | kogao `/api/cron/daily-reminder` |
+| 週報 | 週一 09:00 | kogao `/api/cron/weekly-report` |
+| 帳單到期提醒 | 每日 09:00 | kogao `/api/cron/bill-reminder` |
+| 任務到期提醒 | 每日 09:00 | kogao `/api/cron/task-reminder` |
+| 月底財報 | 每月 28 日 20:00 | kogao `/api/push-report` |
+| 月度快照 | 每月 1 日 08:00 | `/api/cron/monthly-snapshot` |
+| 月報+異常+訂閱 | 每月 1 日 10:00 | `/api/cron/monthly-report` |
+| 年度財報 | 每年 1/1 11:00 | `/api/cron/annual-report` |
+| 季度消費性格 | 1/4/7/10 月 1 日 10:00 | `/api/cron/quarterly-personality-report` |
+
+---
+
+## MCP 工具清單
 | 工具 | 功能 |
 |------|------|
 | `get_summary` | 月收支摘要 |
@@ -182,254 +224,60 @@ LINE 輸入 → webhook 驗簽 → parseExpenseText (claude-haiku)
 | `get_budgets` | 預算 vs 實際 |
 | `get_net_worth` | 淨資產 |
 | `get_loans` | 貸款明細 |
+| `get_loan_summary` | 貸款總覽 |
 | `get_income_breakdown` | 收入來源分析 |
-| ~~`get_payees` / `add_payee` / `update_payee` / `delete_payee`~~ | ~~帳號對照 CRUD~~（已移除） |
 | `get_weekly_report` | 週報 |
 | `get_spending_trend` | 跨月分類比較 |
-| `get_loan_summary` | 貸款總覽 |
-| `bulk_set_category` | 批量重新分類 |
 | `get_cashflow_forecast` | 月底結餘預測 |
+| `get_today_spending` | 今天花了多少 |
+| `get_category_trend` | 指定分類近 N 月趨勢 |
+| `get_goals` | 目標 + 進度 + 預計達標日 |
+| `get_budget_alert` | 超標/接近上限的預算分類 |
+| `get_fixed_expenses` | 固定支出清單 |
+| `get_credit_cards` | 信用卡 + 未繳帳單 |
+| `get_health_score` | 財務健康評分 |
+| `get_fire_progress` | FIRE 進度與預計達成年數 |
+| `get_subscription_summary` | 訂閱清單 + 月費合計 |
+| `get_subscriptions` | 完整訂閱明細（含 nextBillingDate） |
+| `get_notifications` | 所有警示（預算/帳單/貸款/目標） |
+| `get_annual_report` | 年度財報摘要 |
+| `get_anomaly_detection` | z-score 異常支出偵測 |
+| `get_grad_school_plan` | 研究所儲蓄規劃分析 |
+| `bulk_set_category` | 批量重新分類 |
 | `set_income_source` | 設定收入來源類型 |
-| `get_today_spending` | 查今天花了多少、共幾筆 |
-| `get_category_trend` | 指定分類近 N 個月趨勢 |
-| `get_goals` | 所有目標 + 進度 + 預計達標日 |
-| `get_grad_school_plan` | 研究所入學（2028/09）儲蓄規劃分析 |
-| `get_budget_alert` | 超標（>100%）或接近上限（≥80%）的預算分類 |
-| `get_fixed_expenses` | 固定支出清單 + 月費/年費合計 |
-| `get_credit_cards` | 信用卡 + 未繳帳單 + 距截止天數 + 緊急程度 |
-| `get_health_score` | 財務健康評分（儲蓄率 40% + 負債比 30% + 預算達成率 30%） |
-| `get_fire_progress` | FIRE 進度、目標金額、預計達成年數（逐月複利模擬） |
-| `get_subscription_summary` | 已確認訂閱清單 + 月費/年費合計 |
-| `get_notifications` | 所有警示（預算/帳單/貸款/目標），危急優先排序 |
-| `get_annual_report` | 年度財報摘要（月趨勢 + 分類排行 + 最高/最低月份） |
-
-### 待新增
-| 工具 | 功能 | 優先 |
-|------|------|------|
-| `add_transaction` | 新增交易（讓 Claude Code 直接記帳，不用開 LINE） | 🔴 |
-| `update_transaction` | 修改交易分類/備註/金額 | 🔴 |
-| `delete_transaction` | 刪除指定交易 | 🔴 |
-| `add_budget` / `update_budget` | 設定或調整預算 | 🟡 |
-| `add_loan_payment` | 記錄還款 | 🟡 |
-| `get_subscriptions` | 完整訂閱明細（現有 `get_subscription_summary` 只有摘要） | 🟡 |
-| `get_anomaly_detection` | 異常支出偵測（`/api/anomaly-detection` 已有，補 MCP 包裝） | 🟡 |
+| `set_budget` | upsert 分類預算 |
+| `add_transaction` | 新增記帳（source: "mcp"） |
+| `update_transaction` | 修改分類/備註/金額/類型 |
+| `delete_transaction` | 刪除交易（含 audit log） |
+| `add_loan_payment` | 記錄還款 |
 
 ---
 
-## TODO
-
-> 優先順序：🔴 高 → 🟡 中 → 🟢 低
->
-> **建議開工順序：**
-> 1. 資訊安全漏洞（先做，系統開著就是風險）
-> 2. MCP 寫入工具（`add/update/delete_transaction`，完成後 MCP 才能讀寫）
-> 3. 批量刪除 API（UI 依賴它，先建 API 再做前端）
-> 4. 以下 🟡 項目（獨立，任意順序）
+## 參考文件
+- `agent_docs/csv-adapters.md` — CSV 銀行代碼對應、adapter 位置
+- `agent_docs/prisma-schema.md` — Prisma 模型說明、migration 注意事項
+- `agent_docs/notion.md` — Notion 欄位對應、訂閱資料來源
 
 ---
 
-### 資訊安全（🔴 高優先）
+## TODO（待做）
 
-#### 實際漏洞（需盡快修復）
-- [x] **登入暴力破解防護**：in-memory rate limit，同一 IP 15 分鐘內最多 10 次
-- [x] **密碼時序攻擊**：改用 `crypto.timingSafeEqual`
-- [x] **上傳副檔名白名單**：`/api/import` 僅接受 `.csv/.xls/.xlsx`，`/api/import-pdf` 僅接受 `.pdf`
-- [x] **lineUserId 可偽造**：`/api/import` 改為伺服器端固定 `"dashboard_user"`，不再信任 client 傳入值
-
-#### 縱深防禦（建議加入）
-- [x] **HTTP Security Headers**：X-Frame-Options、X-Content-Type-Options、Referrer-Policy、CSP 已加入 `next.config.js`
-- [x] **SESSION_SECRET 強度驗證**：`session.ts` 啟動時驗證長度 ≥ 32 字元
-- [x] **Audit Log 補齊敏感操作**：新增 login / transaction_delete / data_export，記錄登入成敗、交易刪除快照、JSON/CSV/XLSX 匯出
-
-#### 低風險確認
-- [x] **Webhook 簽名驗證**：確認 `verifySignature` 失敗時立即 return 200（LINE 要求），目前看起來正確但加入單元測試驗證
-- [x] **錯誤訊息稽核**：`/api/import`、`/api/import-pdf` catch block 改為回傳固定提示，不再洩漏 `e.message`
-
----
-
-### Phase A / C / LINE Bot 強化
-> 已移至 kogao 專案（`d:\code\kogao\CLAUDE.md`）管理
-
-### 資料管理強化（🟡 中）
-- [x] 交易分割（一筆拆成多分類，如：超市 $500 → 飲食 $300 + 日用品 $200）
-- [x] 資料備份 / 匯出（全部交易匯出 JSON，交易記錄頁「↓ 備份」按鈕）
-- [x] 疑似重複交易審核介面（工具 → 重複審核，側邊選刪除或保留兩筆）
-- [x] 交易頁重複偵測橫幅 + 新增時即時警示（同來源同金額 2 天內，常態消費 ≥4 次/30 天自動略過）
-- [x] 交易合併（批次選取 ≥2 筆後出現「⊕ 合併」按鈕，金額加總）
-- [x] 交易備註快速模板（新增記帳 modal 顯示模板，自動學習已輸入備註）
-- [x] 批次修改分類（已存在）
-- [x] 交易記錄日曆視圖（已存在）
-- [x] 交易備註批次更新：批次選取後可一次修改備註（CSV 匯入的銀行描述碼）
-- [x] 匯出 Excel 格式：在備份/匯出頁加入 .xlsx 下載（使用 exceljs 或 xlsx 套件）
-- [x] 轉帳自動辨識改善：匯入時偵測轉帳行為直接標為「轉帳」分類，避免支出統計失真
-- [x] **CSV 匯入自動套用訂閱分類**：匯入時比對 Notion 訂閱清單產品名稱，若 note 含關鍵字則自動套用對應分類，在 `src/lib/csv/index.ts` 後處理階段注入
-
-### 訂閱管理（Notion 來源）（🟡 中）
-> **設計原則**：固定支出只放非訂閱的固定費用（房租/保險/水電），訂閱服務一律在 Notion 維護，兩邊不重疊。
-
-
-- [x] 訂閱資料改從 Notion Database 讀取（欄位：產品/訂閱開始日/付款方式/分類標籤/訂閱週期/訂閱費/每月金額/總計花費）
-- [x] 勾選「取消訂閱」的項目自動排除，不列入計算也不顯示
-- [x] 付款方式分布進度條（百分比 + 顏色）
-- [x] 支援付款方式 filter chips + 關鍵字搜尋 + 排序（月費/累計/名稱/開始日）
-- [x] **整合帳單日曆**：從「訂閱開始日 + 訂閱週期」計算下次扣款日，顯示在 BillCalendar（`/api/subscriptions` 新增 `nextBillingDate` 欄位）
-- [x] **整合通知中心**：年繳訂閱距下次扣款 ≤14 天時，自動加入 `/api/notifications` 警示
-- [x] **信用卡頁面顯示訂閱負擔**：LoanManager 信用卡列表旁顯示「綁定 X 項訂閱・月費 NT$Y」（比對付款方式欄位）
-- [x] **分類標籤圓餅圖**：訂閱頁加「by 標籤」分組視圖，顯示各類別月費佔比
-- ~~**年繳省錢試算**：月繳項目旁顯示「改年繳每年可省 NT$X」提示~~ → 不需要
-- [x] **LINE 推播**：年繳訂閱到期已由 kogao bill-reminder 推播（subscription type 通知）
-- [x] **訂閱 vs 交易比對**：新增 `/api/subscriptions/verify`，比對本月交易與 Notion 訂閱清單（模糊比對名稱），顯示「已扣款 / 未找到交易」狀態於訂閱管理頁下方
-- ~~**外幣訂閱換算顯示**：Notion DB 加 `原幣金額` + `幣別` 欄位，非 TWD 時顯示「USD 9.99 ≈ NT$ 320」，匯率可 hardcode 或串公開 API~~ → 不需要
-- ~~**信用卡回饋試算**：訂閱管理頁新增回饋試算區塊，依付款方式分組月費 × 可設定回饋率，顯示每月可賺回饋金額，設定值存 localStorage~~ → 不需要
-
-### 訂閱偵測優化（🟡 中）
-- [x] 偵測邏輯加入金額容忍區間（±5%），處理國際訂閱匯率浮動
-- ~~定期交易自動建立~~：工作流已用 CSV 匯入覆蓋，不需自動生成（會重複記帳）
-
-### Dashboard 優化（🟢 低）
-- [x] 圖表卡片自訂顯示（使用者可選擇首頁要顯示哪幾個圖表）
-- [x] 圖表卡片拖曳排序（⠿ 拖曳調整順序，存入 localStorage）
-- [x] 月份對比卡（圖表 tab 新增當月 vs 上月收支對比卡）
-- [x] 快速搜尋 Bar（Header 搜尋鈕，Enter 跳到交易記錄，/ 鍵觸發）
-- [x] 收支小結常駐卡（交易記錄頁頂端常駐本月收入/支出/儲蓄率）
-- [x] JSON 備份還原（匯入頁支援從備份 JSON 反向還原，重複自動跳過）
-- [x] 鍵盤快捷鍵（N=新增記帳, 1-5=切主Tab, /=搜尋, Esc=關Modal）
-- [x] 財務健康評分動畫計數器（從 0 easeOut 動畫跳到目前分數）
-- [x] 頁面 title 顯示當前月份（LINE 記帳 | YYYY-MM）
-- [x] 分類預算快覽列：圖表 Tab 頂端顯示所有分類的 已用/預算 進度條，超標變紅（目前需切到預算 Tab）
-- [x] 每日消費熱力圖：整合進收支日曆，新增「📅 收支 / 🔥 熱力」切換按鈕（共用資料與月份導航，不另開獨立卡片）
-- [x] 消費月曆升級：日曆格子顯示當日支出總額（紅色漸層強度），hover 彈出當日交易明細 popup（分類/備註/金額），純收入日顯示綠色
-- ~~搜尋歷史記錄：快速搜尋 Bar 顯示最近 5 筆紀錄（localStorage），點一下套用~~ → 不需要
-- [x] 淺色主題：確認「☀️ 淺藍」「☀️ 白底」為淺色主題，「🌙 深色」為深色主題；優化命名加 ☀️/🌙 標示，並強化淺色主題卡片陰影與邊框細節
-- [x] 月曆 hover popup 邊界修正：行末格子（週六/週日欄）的明細 popup 可能超出右側畫面，需偵測位置動態往左展開
-- [x] 圖表 Tab 卡片懶載入：卡片數量多時初次進入較慢，考慮依 cardOrder/visibility 分批渲染
-- [x] 預算月結轉機制：某月預算沒用完時，自動把剩餘的 X% 結轉到下月額度（`Budget` 加 `carryoverPct` 欄位，BudgetManager 加結轉設定 toggle，預算進度條顯示「基本 $3,000 + 結轉 $450」）
-
-### 頁面 UX 優化（🟡 中）
-
-#### 導覽 / Header
-- [x] Tab 記憶：重新整理後回到上次所在的 Tab（localStorage 存 activeTab）
-- [x] 通知鈴鐺紅點：在鈴鐺上直接顯示未讀通知數量 badge
-- [x] Header 單行化：Logo 與 Tab nav 合併同一行，減少垂直空間佔用
-- [x] 通知中心優先排序：前端直接用 API 回傳陣列，未打亂順序
-
-#### 圖表 tab
-- [x] 月份對比卡可展開：點擊展開看全分類對比 Bar Chart
-- [x] 淨資產 Hero 點擊跳轉：點「貸款餘額」跳負債管理、點「信用卡未繳」跳信用卡
-- [x] 帳戶餘額空狀態：沒有帳戶時顯示「→ 前往匯入 CSV」引導按鈕
-- [x] 進度條動畫：健康評分三條子進度條也從 0 漸入
-- [x] 圖表 Tooltip 統一格式：全部加 NT$ 前綴與千分位
-- [x] 負債 Tab badge：Tab 標題旁顯示「最近 7 天到期帳單數」紅點，不需進 Tab 就看到警示
-
-#### 交易記錄頁
-- [x] 篩選快速日期按鈕：今天 / 本週 / 本月 / 上月 一鍵套用（在進階篩選日期列新增快速按鈕，點選高亮並自動填入 dateFrom/dateTo）
-- [x] 銀行來源篩選：進階篩選新增「來源」多選列，支援 LINE / 手動 / 各銀行 / 信用卡，篩選條件同步至 export CSV
-- [x] 無限滾動：滾到底部自動載入下一頁，取代分頁按鈕
-- [x] 空狀態改善：搜尋無結果時顯示「清除篩選」按鈕（有篩選條件時顯示 🔍 找不到符合條件＋清除篩選按鈕；真的無資料才顯示原始引導畫面）
-- [x] 行內金額編輯：點擊金額直接 inline 編輯，不用開 modal（點擊金額變 input，Enter/blur 儲存，Escape 取消，同步更新 PATCH API 支援 amount 欄位）
-- [x] 金額範圍篩選：進階篩選已有金額最小/最大欄位（早已實作）
-- [x] 批量刪除交易：批次模式工具列新增「🗑 刪除 N 筆」按鈕，confirm 二次確認後呼叫 /api/transactions/batch-delete
-
-#### 效能
-- [x] Tab 資料快取：切回之前看過的 Tab 時不重新 fetch（useRef 快取）
-
-#### 手機 / 響應式
-- [x] Tab nav 水平捲動：手機上 Tab 超出螢幕時可左右滑動
-- [x] Modal 全螢幕：手機上新增記帳 modal 改為 bottom sheet 全螢幕
-
-### 通知與推播
-> 已移至 kogao 專案（`d:\code\kogao\CLAUDE.md`）管理
-
-### MCP 工具擴充（🔴 高）
-- [x] `add_transaction`：新增記帳（type/amount/category/note/date），source 標記為 "mcp"
-- [x] `update_transaction`：修改指定交易的分類/備註/金額/類型
-- [x] `delete_transaction`：刪除前查詢快照確認，寫入 audit log
-- [x] `set_budget`：upsert 分類預算（category/amount/carryoverPct）
-- [x] `add_loan_payment`：記錄還款，自動更新剩餘本金與狀態
-- [x] `get_subscriptions`：回傳完整訂閱明細（含 fee/cycle/nextBillingDate/tags）
-- [x] `get_anomaly_detection`：z-score 異常偵測，支援 month/lookback 參數
-
-### AI 洞察（🔴 高）
-- [x] AI 月度洞察報告：每月底用 Claude API 分析當月交易，自動生成個人化建議（支出異常、預算執行、目標進度、研究所儲蓄缺口），結果顯示在 Dashboard 並可 LINE 推播
-- [x] 分類預算自動建議：進入預算設定時，根據近 3 個月平均支出自動建議各分類預算金額
-- [x] 支出異常偵測（統計型）：以 z-score 偵測某分類當週/當月是否異常偏高（vs 過去 4 週平均），比固定閾值更聰明
-- [x] Claude 批次「其他」分類清理：查出所有 category=「其他」交易，Claude 分析 note 批次建議分類，Dashboard 工具區顯示建議列表一鍵套用
-- [x] 消費性格 AI 報告：用 Claude 分析近 3 個月交易，生成個人化報告（消費時段分佈、衝動消費比例、高風險分類、行為建議 3 條），新 API `/api/ai-personality-report`，顯示在進階分析 Tab，可傳送 LINE
-- [x] **交易備注 AI 批次可讀化**：工具區新增「備注整理」，撈出 note 含英文且未手動編輯的交易，送 Claude API 批次建議中文可讀備注（如 `PAYPAL *ADOBE` → `Adobe 訂閱`），一鍵套用或逐筆確認
-- [x] 🔴 **AI 分類學習持久化**：新表 `CategoryRule { keyword, category, source?, hitCount, lastUsedAt }`，使用者修改交易分類時自動寫入規則（若 note 含 keyword → 套用 category），下次 LINE 記帳/CSV 匯入時優先比對規則，命中時 hitCount++；工具區可檢視/編輯/刪除規則
-
-### 資料管理擴充（🔴 高）
-- [x] 🔴 **快捷記帳一鍵組合**：分析近 30 天高頻交易（同 category+amount±10% 出現 ≥3 次），自動產生快捷鈕，顯示在交易頁頂端，點擊直接寫入；支援手動釘選/排序，存 localStorage
-- [x] 🔴 **轉帳主動配對**：新增交易後後端查近 3 天同金額反向交易，有則回傳 candidate；前端 toast 提示「這筆是不是轉帳？」一鍵確認，兩筆同時改為「轉帳」分類並互相關聯（`Transaction.transferPairId`）
-- ~~**群組分帳 / AA 制**~~ → 不需要
-- [x] 🟡 **借貸往來追蹤**：新表 `PersonalDebt { counterparty, direction(owed_to_me/i_owe), amount, note, createdAt, settledAt }`，與正式 transactions 分開但可一鍵轉成正式入帳；Dashboard 工具區新分頁
-- ~~**電子發票載具整合**~~ → 個人無法申請官方 API（需 ISO 27001 認證），不做
-
-### Gamification（🟢 低）
-- [x] 🟢 **記帳連續天數**：新表 `UserStreak { currentStreak, longestStreak, lastRecordDate }`，每次記帳後檢查是否續日；Dashboard Header 顯示「🔥 N 天」徽章，里程碑（7/30/100 天）解鎖獎章；配合 kogao LINE Bot 早上推播「昨天還沒記帳喔！」
-- [x] 🟢 **支出購買力換算**：新增交易後 hover 金額顯示「= 工作 X 分鐘」，根據設定中的時薪換算；設定頁加入「我的時薪」欄位
-- [ ] 🟢 **位置記帳**：手機 PWA 用 Geolocation API 取得 GPS，比對 Google Places API 自動帶入店家名稱到 note 欄位
+### UI / UX 優化
+- [ ] 🔥 **通知中心快捷按鈕**：預算超標顯示「調整預算」、帳單到期顯示「標記已繳」
+- [ ] 🔥 **圖表卡片折疊**：不常看的卡片可收起，減少滾動
+- [ ] 🔥 **健康分數移到 Header**：在 🔥streak 徽章旁加財務健康分數徽章
+- [ ] 🔥 **異常支出卡移到首頁圖表 tab**：`/api/anomaly-detection` 已有，不用進進階分析才看到
+- [ ] 🟡 **圖表 loading skeleton**：spinner 改骨架屏，減少版面跳動
+- [ ] 🟡 **LINE 警報頻率上限**：同天多張帳單到期合併推播
+- [ ] 🟡 **消費性格報告入口**：圖表頁底部加小卡片入口，不用點 Tab 才找到
+- [ ] 🟢 **淨資產趨勢折線圖**：快照資料已存在，加資產/負債/淨值歷史走勢圖
+- [ ] 🟢 **同月 YoY 比較卡**：圖表頁加「與去年同期」對比卡
 
 ### 聽力追蹤（🟡 中）
-> 每 2-3 週回診，追蹤聽力變化趨勢
+> 跨 line-accounting + kogao + kogao-os 三 repo，需統一規劃
 
-- [ ] 新增 `HearingTest` 模型：`testDate`, `imageUrl`（Base64 原始照片）, `notes`, `nextVisit`
-- [ ] 新增 `HearingResult` 模型：`hearingTestId`, `ear`(left/right), `type`(air/bone), `frequency`, `thresholdDb`
-- [ ] `GET /api/hearing` — 列出所有測試（含 results）
-- [ ] `POST /api/hearing` — 新增測試 + results（由 LINE Bot OCR 呼叫）
-- [ ] `GET /api/hearing/[id]` — 單筆詳情
-- [ ] `PATCH /api/hearing/[id]` — 修正數值
-- [ ] `DELETE /api/hearing/[id]` — 刪除測試
-- [ ] `GET /api/hearing/trends` — 各頻率 dB 隨時間變化趨勢資料
-
-### 資料分析強化（🟡 中）
-- [x] 收支年同期比較（YoY）：在月份對比卡或進階分析新增「今年 N 月 vs 去年 N 月」，追蹤長期財務進步
-- ~~帳單行事曆 .ics 匯出~~ → 改用 LINE 推播提醒（帳單到期前 3 天自動推送）
-- ~~財務日記（月度一句話）~~ → 不需要
-- [x] 每日財務箴言：圖表 Tab 頂端顯示聖經理財金句 + 關聖帝君聖訓、佛教、文昌帝君，每天自動換一則，可手動 🔀 換一則
-- [x] 支出心情分佈圖：mood 欄位（衝動/計畫/必要）月趨勢 Pie + Bar 圖，顯示衝動消費佔比與金額，圖表 Tab 新增卡片（原 AreaChart 升級為 Bar 趨勢 + Pie 分佈切換，右上角 toggle）
-- ~~省錢月挑戰：每月自訂分類支出上限挑戰，首頁顯示進度條 + 每日剩餘可花額度，localStorage 存設定~~ → 功能與存錢挑戰（SavingsChallenge）重疊，一併移除
-- [x] 貸款提前還款模擬器：負債管理頁加「每月多還 X 元」滑桿，即時試算提前還清月數與節省利息（對凱基 16% 特別有用）（整合進 DebtOptimizer 還債優化，滑桿即時對比還清時間與節省利息，含 CP 值顯示）
-- [x] 財務里程碑時間軸：把研究所入學（2028/09）、FIRE 達成年份、各儲蓄目標預計達成日統一顯示在橫向時間軸，串接 goals / get_fire_progress / get_grad_school_plan，新 component `MilestoneTimeline.tsx`，嵌入進階分析 Tab
-
-
-### Notion 全自動整合（🟡 中）
-> 全部為寫入型整合，不需手動維護 Notion，自動累積歷史紀錄
-
-- [x] 🟡 **AI 月報自動歸檔**：`POST /api/cron/monthly-report`，同時處理異常支出寫 Notion 警示 + 訂閱漲價標註
-- [x] 🟡 **AI 年報自動歸檔**：`POST /api/cron/annual-report`，每年 1/1 觸發
-- [x] 🟡 **異常支出自動寫 Notion 警示頁**：整合在 monthly-report cron，命中時 append 到「財務警示」
-- [x] 🟡 **訂閱漲價自動標註**：整合在 monthly-report cron，比對後 append 到 Notion 訂閱 DB
-- [x] 🟡 **目標達成里程碑自動歸檔**：PATCH `/api/goals/[id]` 偵測 savedAmount 剛達標即觸發，建 Notion 紀念頁
-- [x] 🟢 **消費性格 AI 報告每季自動歸檔**：每季 1 號（1/4/7/10 月）自動執行消費性格分析並寫到 Notion，可觀察性格演變史
-
----
-
-## 考慮移除 / 降權的功能
-
-> 優先順序：🔴 高（立即可做）→ 🟡 中（需評估）→ 🟢 低（個人判斷）
-
-### ✅ 已移除
-| 功能 | 說明 |
-|------|------|
-| 存錢挑戰（SavingsChallenge） | 52週遞增邏輯複雜，已被「儲蓄規劃」看板取代 → **已完全移除**（Tab + 元件 + API + 資料表） |
-
----
-
-### 移除 TODO（🔴 高 — 低風險，移除乾淨）
-
-- [x] **疑似轉帳配對**：移除 `/api/transfer-candidates`、dashboard 的 `transferPairs` state + fetch + UI section（line ~3401）；轉帳辨識改由匯入時直接標分類處理
-- [x] **帳號對照（PayeeMapping）**：移除 `payees` Tab、`PayeeManager` 元件、`/api/payees/` + `/api/payees/[id]/`；執行 `prisma migrate dev` 刪除 `PayeeMapping` 資料表（待執行 DB migration）
-
-### 改造 TODO（🟡 中 — 保留功能但降低複雜度）
-
-- [x] **財務健康評分快照**：移除手動「📌 記錄」按鈕，改為每次載入圖表 Tab 時自動 upsert 當月快照（趨勢圖保留）；移除 `/api/health-score/snapshots` 的手動呼叫邏輯（與淨資產快照合併為同一 useEffect 自動 upsert）
-- ~~**使用說明 Tab**：把「使用說明」從 Tools 下拉移除，改為 Header 右側的 `?` 按鈕展開 Modal，減少 Tab 數量~~ → 保留現狀，待 UI 大改時再評估
-- [x] **淨資產快照手動記錄**：與健康評分快照相同，移除「記錄快照」按鈕，改為自動 upsert（目前兩套快照邏輯重複）
-
-### 保留（個人化頁面，確認繼續使用）
-
-| 功能 | 說明 |
-|------|------|
-| 研究所規劃（GradSchoolPlanner） | 個人化頁面，2028/09 入學規劃 → **保留** |
-| 教育學程規劃（EducationProgramPlanner） | 個人化頁面，自費課程分期規劃 → **保留** |
+- [ ] `HearingTest` + `HearingResult` Prisma 模型
+- [ ] `GET/POST /api/hearing`、`GET/PATCH/DELETE /api/hearing/[id]`
+- [ ] `GET /api/hearing/trends` — 各頻率 dB 趨勢
+- [ ] kogao OCR 流程解析聽力報告圖
+- [ ] kogao-os UI 顯示趨勢圖（mock 已完成）
