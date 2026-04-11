@@ -8,6 +8,7 @@ import {
   getSubscriptionsFromNotion,
 } from "@/lib/notion";
 import { logAudit } from "@/lib/audit";
+import { taipeiTodayAsUTC } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -25,9 +26,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const now   = new Date();
-  const prevD = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const month = `${prevD.getFullYear()}-${String(prevD.getMonth() + 1).padStart(2, "0")}`;
+  // 取「上個月」以台灣時區為準
+  const nowTW = taipeiTodayAsUTC();
+  const prevD = new Date(Date.UTC(nowTW.getUTCFullYear(), nowTW.getUTCMonth() - 1, 1));
+  const month = `${prevD.getUTCFullYear()}-${String(prevD.getUTCMonth() + 1).padStart(2, "0")}`;
 
   const result: Record<string, unknown> = { month };
 

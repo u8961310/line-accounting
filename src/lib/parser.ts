@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { taipeiToday } from "./time";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -14,7 +15,7 @@ export interface ParsedExpense {
 
 
 export async function parseExpenseText(text: string, today?: string): Promise<ParsedExpense | null> {
-  const todayStr = today ?? new Date().toISOString().split("T")[0];
+  const todayStr = today ?? taipeiToday();
   const systemPrompt = `你是一個記帳助手，專門從自然語言中解析記帳資訊。
 今天日期是 ${todayStr}。
 請從使用者的訊息中提取記帳資訊，並以 JSON 格式回應。

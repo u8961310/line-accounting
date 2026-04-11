@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { taipeiTodayAsUTC } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +22,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // ── 決定快照月份（上個月） ──
-    const now = new Date();
-    const snapshotDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const month = `${snapshotDate.getFullYear()}-${String(snapshotDate.getMonth() + 1).padStart(2, "0")}`;
-    const monthStart = snapshotDate;
-    const monthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
+    // ── 決定快照月份（上個月，以台灣時區為準） ──
+    const nowTW = taipeiTodayAsUTC();
+    const yTW = nowTW.getUTCFullYear();
+    const mTW = nowTW.getUTCMonth(); // 0-indexed
+    const month = `${mTW === 0 ? yTW - 1 : yTW}-${String(mTW === 0 ? 12 : mTW).padStart(2, "0")}`;
+    const monthStart = new Date(Date.UTC(yTW, mTW - 1, 1));
+    const monthEnd   = new Date(Date.UTC(yTW, mTW, 1));
 
     // ── 淨資產計算 ──
     const [bankBalances, activeLoans, creditCards, cashOut, cashIn] = await Promise.all([

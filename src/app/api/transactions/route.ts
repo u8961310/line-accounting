@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import * as XLSX from "xlsx";
 import { logAudit } from "@/lib/audit";
+import { taipeiToday } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest) {
         source: r.source,
         mood: r.mood ?? null,
       }));
-      const filename = `transactions-backup-${new Date().toISOString().split("T")[0]}.json`;
+      const filename = `transactions-backup-${taipeiToday()}.json`;
       void logAudit({ action: "data_export", tool: "json", summary: { count: rows.length, filename } });
       return new NextResponse(JSON.stringify(data, null, 2), {
         headers: {
@@ -100,7 +101,7 @@ export async function GET(request: NextRequest) {
       ws["!cols"] = [{ wch: 12 }, { wch: 6 }, { wch: 10 }, { wch: 10 }, { wch: 30 }, { wch: 14 }, { wch: 8 }];
       XLSX.utils.book_append_sheet(wb, ws, "交易記錄");
       const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as number[];
-      const filename = `transactions-${new Date().toISOString().split("T")[0]}.xlsx`;
+      const filename = `transactions-${taipeiToday()}.xlsx`;
       void logAudit({ action: "data_export", tool: "xlsx", summary: { count: rows.length, filename } });
       return new NextResponse(new Uint8Array(buf), {
         headers: {
@@ -237,31 +238,45 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // 轉帳主動偵測：查近 3 天有沒有同金額、相反方向、尚未配對的交易
-    const txDate = new Date(body.date);
-    const dateFrom = new Date(txDate.getTime() - 3 * 24 * 60 * 60 * 1000);
-    const dateTo   = new Date(txDate.getTime() + 3 * 24 * 60 * 60 * 1000);
-    const oppositeType = body.type === "支出" ? "收入" : "支出";
+    // 轉帳主動偵測：查近 3 天有沒有同金額、相反方向、尚未配對的交易（非關鍵，失敗不影響記帳）
+    let transferCandidate = null;
+    try {
+      const txDate = new Date(body.date);
+      const dateFrom = new Date(txDate.getTime() - 3 * 24 * 60 * 60 * 1000);
+      const dateTo   = new Date(txDate.getTime() + 3 * 24 * 60 * 60 * 1000);
+      const oppositeType = body.type === "支出" ? "收入" : "支出";
 
-    const transferCandidate = await prisma.transaction.findFirst({
-      where: {
-        userId: user.id,
-        type: oppositeType,
-        amount: { gte: body.amount - 0.01, lte: body.amount + 0.01 },
-        date: { gte: dateFrom, lte: dateTo },
-        transferPairId: null,
-        id: { not: tx.id },
-      },
-      select: { id: true, date: true, note: true, source: true },
-    });
+      const candidate = await prisma.transaction.findFirst({
+        where: {
+          userId: user.id,
+          type: oppositeType,
+          amount: { gte: body.amount - 0.01, lte: body.amount + 0.01 },
+          date: { gte: dateFrom, lte: dateTo },
+          transferPairId: null,
+          id: { not: tx.id },
+        },
+        select: { id: true, date: true, note: true, source: true },
+      });
+      if (candidate) {
+        transferCandidate = {
+          id: candidate.id,
+          date: candidate.date.toISOString().split("T")[0],
+          note: candidate.note,
+          source: candidate.source,
+        };
+      }
+    } catch { /* 非關鍵，略過 */ }
 
-    return NextResponse.json({
-      id: tx.id,
-      transferCandidate: transferCandidate
-        ? { id: transferCandidate.id, date: transferCandidate.date.toISOString().split("T")[0], note: transferCandidate.note, source: transferCandidate.source }
-        : null,
-    });
-  } catch (e) {
+    return NextResponse.json({ id: tx.id, transferCandidate });
+  } catch (e: unknown) {
+    // P2002：唯一約束衝突（同一天同來源同金額已記錄過）→ 回傳 409 而非 500
+    if (
+      e instanceof Error &&
+      "code" in e &&
+      (e as { code: string }).code === "P2002"
+    ) {
+      return NextResponse.json({ error: "duplicate" }, { status: 409 });
+    }
     console.error(e);
     return NextResponse.json({ error: "Failed" }, { status: 500 });
   }

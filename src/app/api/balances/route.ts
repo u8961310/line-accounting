@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { taipeiToday } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -102,7 +103,7 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
   result.push({
     source:      "cash",
     balance:     cashBalance,
-    asOfDate:    storedCash?.asOfDate.toISOString().split("T")[0] ?? new Date().toISOString().split("T")[0],
+    asOfDate:    storedCash?.asOfDate.toISOString().split("T")[0] ?? taipeiToday(),
     alias:       storedCash?.alias ?? null,
     savingsGoal: storedCash?.savingsGoal ? parseFloat(storedCash.savingsGoal.toString()) : null,
   });

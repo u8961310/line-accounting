@@ -3,6 +3,7 @@ import { verifySignature, replyMessage, replyRawMessage, getUserProfile } from "
 import { parseExpenseText } from "@/lib/parser";
 import { prisma } from "@/lib/db";
 import { matchCategoryRule } from "@/lib/category-rules";
+import { taipeiToday } from "@/lib/time";
 import {
   buildRecordedMessage,
   buildSummaryMessage,
@@ -154,9 +155,9 @@ async function handleTextMessage(event: LineEvent, userId: string, text: string)
     create: { lineUserId: "dashboard_user", displayName: "Dashboard" },
   });
 
-  // 儲存交易（使用 AI 解析的日期，未指定則用今天）
-  const txDate = parsed.date ? new Date(parsed.date) : new Date();
-  txDate.setHours(0, 0, 0, 0);
+  // 儲存交易（使用 AI 解析的日期，未指定則用台灣今天）
+  const txDateStr = parsed.date ?? taipeiToday();
+  const txDate = new Date(`${txDateStr}T00:00:00Z`);
 
   // 用 create + 重複時 upsert fallback，避免同天同金額互蓋
   let transaction;
