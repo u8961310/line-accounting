@@ -33,11 +33,107 @@ export function buildRecordedMessage(p: {
   category: string;
   note: string;
   date: Date;
+  mealBudgetStatus?: {
+    label: string;        // 例 "今日早餐"
+    spent: number;
+    budget: number;
+    isOver: boolean;
+  };
 }): Record<string, unknown> {
   const isIncome  = p.type === "收入";
   const typeColor = isIncome ? GRN : RED;
   const typeEmoji = isIncome ? "💰" : "💸";
   const dateStr   = p.date.toLocaleDateString("zh-TW", { month: "numeric", day: "numeric", weekday: "short" });
+
+  const bodyContents: unknown[] = [
+    // 類型標籤
+    {
+      type: "box",
+      layout: "horizontal",
+      contents: [{
+        type: "box",
+        layout: "vertical",
+        backgroundColor: typeColor + "22",
+        cornerRadius: "20px",
+        paddingAll: "5px",
+        paddingStart: "12px",
+        paddingEnd: "12px",
+        contents: [{
+          type: "text",
+          text: `${typeEmoji} ${p.type}`,
+          color: typeColor,
+          size: "xs",
+          weight: "bold",
+        }],
+      }],
+    },
+    // 金額
+    {
+      type: "text",
+      text: `NT$ ${fmt(p.amount)}`,
+      size: "3xl",
+      weight: "bold",
+      color: TEXT,
+      margin: "lg",
+    },
+    { type: "separator", margin: "lg", color: BORD },
+    // 分類 + 備註
+    {
+      type: "box",
+      layout: "horizontal",
+      margin: "lg",
+      spacing: "sm",
+      alignItems: "center",
+      contents: [
+        {
+          type: "box",
+          layout: "vertical",
+          backgroundColor: BLUE + "33",
+          cornerRadius: "20px",
+          paddingAll: "4px",
+          paddingStart: "10px",
+          paddingEnd: "10px",
+          contents: [{
+            type: "text",
+            text: p.category,
+            color: BLUE,
+            size: "xs",
+            weight: "bold",
+          }],
+        },
+        ...(p.note ? [{
+          type: "text",
+          text: p.note,
+          color: MUTE,
+          size: "sm",
+          flex: 1,
+          wrap: true,
+        }] : []),
+      ],
+    },
+    // 日期
+    { type: "text", text: dateStr, color: MUTE, size: "xs", margin: "md" },
+  ];
+
+  // 三餐預算進度（若有）
+  if (p.mealBudgetStatus) {
+    const { label, spent, budget, isOver } = p.mealBudgetStatus;
+    const remain = Math.max(0, budget - spent);
+    const statusText = isOver
+      ? `🍳 ${label} ${fmt(spent)}/${fmt(budget)} ⚠️ 已超 ${fmt(spent - budget)}`
+      : `🍳 ${label} ${fmt(spent)}/${fmt(budget)}（剩 ${fmt(remain)}）`;
+
+    bodyContents.push({ type: "separator", margin: "md", color: BORD });
+    bodyContents.push({
+      type: "text",
+      text: statusText,
+      color: isOver ? RED : MUTE,
+      size: "sm",
+      weight: isOver ? "bold" : "regular",
+      margin: "md",
+      wrap: true,
+    });
+  }
 
   return {
     type: "flex",
@@ -50,75 +146,7 @@ export function buildRecordedMessage(p: {
         layout: "vertical",
         backgroundColor: BG,
         paddingAll: "20px",
-        contents: [
-          // 類型標籤
-          {
-            type: "box",
-            layout: "horizontal",
-            contents: [{
-              type: "box",
-              layout: "vertical",
-              backgroundColor: typeColor + "22",
-              cornerRadius: "20px",
-              paddingAll: "5px",
-              paddingStart: "12px",
-              paddingEnd: "12px",
-              contents: [{
-                type: "text",
-                text: `${typeEmoji} ${p.type}`,
-                color: typeColor,
-                size: "xs",
-                weight: "bold",
-              }],
-            }],
-          },
-          // 金額
-          {
-            type: "text",
-            text: `NT$ ${fmt(p.amount)}`,
-            size: "3xl",
-            weight: "bold",
-            color: TEXT,
-            margin: "lg",
-          },
-          { type: "separator", margin: "lg", color: BORD },
-          // 分類 + 備註
-          {
-            type: "box",
-            layout: "horizontal",
-            margin: "lg",
-            spacing: "sm",
-            alignItems: "center",
-            contents: [
-              {
-                type: "box",
-                layout: "vertical",
-                backgroundColor: BLUE + "33",
-                cornerRadius: "20px",
-                paddingAll: "4px",
-                paddingStart: "10px",
-                paddingEnd: "10px",
-                contents: [{
-                  type: "text",
-                  text: p.category,
-                  color: BLUE,
-                  size: "xs",
-                  weight: "bold",
-                }],
-              },
-              ...(p.note ? [{
-                type: "text",
-                text: p.note,
-                color: MUTE,
-                size: "sm",
-                flex: 1,
-                wrap: true,
-              }] : []),
-            ],
-          },
-          // 日期
-          { type: "text", text: dateStr, color: MUTE, size: "xs", margin: "md" },
-        ],
+        contents: bodyContents,
       },
     },
     quickReply: QUICK_REPLY,
