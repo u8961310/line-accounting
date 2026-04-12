@@ -28,6 +28,7 @@ model User {
   streak               UserStreak?
   categoryRules        CategoryRule[]
   personalDebts        PersonalDebt[]
+  events               Event[]
 }
 
 model Budget {
@@ -337,6 +338,35 @@ model PersonalDebt {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ── 人生管理：活動 ────────────────────────────────────────────────────────────
+
+model Event {
+  id              String    @id @default(cuid())
+  userId          String
+  title           String
+  startAt         DateTime  // 活動開始時間（UTC）
+  endAt           DateTime? // 活動結束時間（UTC），選填
+  location        String    @default("")
+  link            String    @default("")   // 線上會議連結
+  speakers        String    @default("")   // 講者（逗號分隔）
+  description     String    @default("")
+  reminderMinutes Int       @default(60)   // 活動前幾分鐘提醒
+  reminded        Boolean   @default(false)
+  cronId          String?   // Cronicle 提醒事件 ID
+  googleEventId   String?   // Google Calendar event ID，有值代表從 GCal 同步來
+  isAllDay        Boolean   @default(false) // 全天事件
+  status          String    @default("confirmed") // confirmed | cancelled
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([startAt])
+  @@index([userId, startAt, title])
+  @@index([googleEventId])
 }
 
 model AuditLog {
