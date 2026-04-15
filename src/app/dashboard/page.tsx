@@ -607,7 +607,7 @@ export default function DashboardPage() {
   const [bankEditSaving, setBankEditSaving] = useState(false);
   const [notionSyncing, setNotionSyncing] = useState(false);
   const [notionMsg,     setNotionMsg]     = useState<string | null>(null);
-  const [addForm,      setAddForm]      = useState({ date: new Date().toISOString().split("T")[0], type: "收入", amount: "", category: "", note: "" });
+  const [addForm,      setAddForm]      = useState({ date: new Date().toISOString().split("T")[0], type: "收入", amount: "", category: "", note: "", source: "manual" });
   const [addSaving,    setAddSaving]    = useState(false);
   const [dupWarning,   setDupWarning]   = useState<{ id: string; date: string; note: string }[] | null>(null);
   const [dupRefreshKey, setDupRefreshKey] = useState(0);
@@ -1306,7 +1306,7 @@ export default function DashboardPage() {
       const res = await fetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: addForm.date, type: addForm.type, amount, category: addForm.category.trim(), note: addForm.note, ...(force ? { force: true } : {}) }),
+        body: JSON.stringify({ date: addForm.date, type: addForm.type, amount, category: addForm.category.trim(), note: addForm.note, source: addForm.source, ...(force ? { force: true } : {}) }),
       });
       if (res.status === 409) {
         const data = await res.json() as { error: string; existing: { id: string; date: string; note: string }[] };
@@ -1318,7 +1318,7 @@ export default function DashboardPage() {
       setDupWarning(null);
       setAddModal(false);
       if (addForm.note.trim()) addNoteTemplate(addForm.note.trim());
-      setAddForm({ date: new Date().toISOString().split("T")[0], type: "收入", amount: "", category: "", note: "" });
+      setAddForm({ date: new Date().toISOString().split("T")[0], type: "收入", amount: "", category: "", note: "", source: "manual" });
       setCategories(prev => prev.includes(addForm.category.trim()) ? prev : [...prev, addForm.category.trim()].sort());
       setDupRefreshKey(k => k + 1);
       if (activeTab === "transactions") fetchTxPage(1);
@@ -2574,7 +2574,7 @@ export default function DashboardPage() {
                             }
                             return (
                               <p className="text-[14px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-                                {b.source === "cash" ? "提款累加・LINE 扣除" : "點擊 ✎ 設定目標"}
+                                {b.source === "cash" ? "提款累加・LINE / 手動現金扣除" : "點擊 ✎ 設定目標"}
                               </p>
                             );
                           })()}
@@ -5295,7 +5295,7 @@ export default function DashboardPage() {
             {/* Type toggle */}
             <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
               {["收入", "支出"].map(t => (
-                <button key={t} onClick={() => setAddForm(f => ({ ...f, type: t }))}
+                <button key={t} onClick={() => setAddForm(f => ({ ...f, type: t, source: t === "支出" ? "cash" : "manual" }))}
                   className="flex-1 py-2 text-[14px] font-bold transition-all"
                   style={addForm.type === t
                     ? { background: t === "收入" ? "linear-gradient(135deg,#065F46,#10B981)" : "linear-gradient(135deg,#7F1D1D,#EF4444)", color: "#fff" }
@@ -5358,6 +5358,27 @@ export default function DashboardPage() {
                 className="w-full rounded-xl px-3 py-2 text-sm outline-none"
                 style={{ background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-primary)" }} />
             </div>
+
+            {/* Wallet selector — 支出時才顯示 */}
+            {addForm.type === "支出" && (
+              <div>
+                <label className="text-[14px] font-medium mb-1 block" style={{ color: "var(--text-sub)" }}>付款來源</label>
+                <div className="flex flex-wrap gap-1">
+                  {[{ source: "cash", label: "現金錢包" }, ...balances.filter(b => BANK_SOURCES.has(b.source) || CC_SOURCES.has(b.source)).map(b => ({ source: b.source, label: b.alias || SOURCE_LABELS[b.source] || b.source }))].map(opt => (
+                    <button key={opt.source} type="button"
+                      onClick={() => setAddForm(f => ({ ...f, source: opt.source }))}
+                      className="text-[14px] px-2 py-0.5 rounded-md font-medium transition-all"
+                      style={{
+                        background: addForm.source === opt.source ? (opt.source === "cash" ? "#16A34A" : "var(--accent)") : "var(--bg-input)",
+                        color:      addForm.source === opt.source ? "#fff" : "var(--text-sub)",
+                        border:     addForm.source === opt.source ? `1px solid ${opt.source === "cash" ? "#16A34A" : "var(--accent)"}` : "1px solid var(--border-inner)",
+                      }}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {dupWarning && dupWarning.length > 0 && (
               <div className="rounded-xl p-3 space-y-2" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.35)" }}>

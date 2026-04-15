@@ -74,7 +74,7 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
   const cashBaseDate = storedCash?.asOfDate ?? null;
   const afterBase    = cashBaseDate ? { gt: cashBaseDate } : undefined;
 
-  const [withdrawal, deposit, lineExpense, lineIncome] = await Promise.all([
+  const [withdrawal, deposit, lineExpense, lineIncome, cashManualExpense] = await Promise.all([
     prisma.transaction.aggregate({
       where: { category: "現金", type: "支出", ...(afterBase ? { createdAt: afterBase } : {}) },
       _sum: { amount: true },
@@ -91,14 +91,20 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
       where: { source: "line", type: "收入", category: { not: "現金" }, ...(afterBase ? { createdAt: afterBase } : {}) },
       _sum: { amount: true },
     }),
+    // 手動新增且付款來源選「現金錢包」的支出
+    prisma.transaction.aggregate({
+      where: { source: "cash", type: "支出", category: { not: "現金" }, ...(afterBase ? { createdAt: afterBase } : {}) },
+      _sum: { amount: true },
+    }),
   ]);
 
   const cashBalance =
     cashBase +
-    Number(withdrawal._sum.amount  ?? 0) -
-    Number(deposit._sum.amount     ?? 0) -
-    Number(lineExpense._sum.amount ?? 0) +
-    Number(lineIncome._sum.amount  ?? 0);
+    Number(withdrawal._sum.amount         ?? 0) -
+    Number(deposit._sum.amount            ?? 0) -
+    Number(lineExpense._sum.amount        ?? 0) +
+    Number(lineIncome._sum.amount         ?? 0) -
+    Number(cashManualExpense._sum.amount  ?? 0);
 
   result.push({
     source:      "cash",
