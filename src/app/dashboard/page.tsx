@@ -670,6 +670,8 @@ export default function DashboardPage() {
   const [aiInsightLoading, setAiInsightLoading] = useState(false);
   const [aiInsightErr,     setAiInsightErr]     = useState<string | null>(null);
   const [aiInsightOpen,    setAiInsightOpen]    = useState(true);
+  const [aiInsightEmpty,   setAiInsightEmpty]   = useState<string | null>(null);
+  const [aiAvailableMonths, setAiAvailableMonths] = useState<string[]>([]);
   const [dailyQuote,       setDailyQuote]       = useState<FinancialQuote>(() => getDailyQuote());
   const [aiInsightMonth,   setAiInsightMonth]   = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; });
   const [anomalies,      setAnomalies]      = useState<{ category: string; current: number; mean: number; stddev: number; zscore: number; prevMonths: number[] }[]>([]);
@@ -763,16 +765,31 @@ export default function DashboardPage() {
     const month = targetMonth ?? aiInsightMonth;
     setAiInsightLoading(true);
     setAiInsightErr(null);
+    setAiInsightEmpty(null);
+    setAiInsight(null);
     try {
       const res = await fetch(`/api/ai-insight?month=${month}`);
       if (!res.ok) { setAiInsightErr("AI 分析暫時不可用"); return; }
-      const d = await res.json() as { insight?: string; charts?: { donut?: string | null; bar?: string | null }; meta?: { totalIncome: number; totalExpense: number; savingRate: string; overBudgetCount: number }; error?: string };
+      const d = await res.json() as { insight?: string | null; charts?: { donut?: string | null; bar?: string | null }; meta?: { totalIncome: number; totalExpense: number; savingRate: string; overBudgetCount: number } | null; error?: string; message?: string };
       if (d.error) { setAiInsightErr(d.error); return; }
-      if (d.insight && d.meta) setAiInsight({ insight: d.insight, charts: d.charts ?? {}, meta: d.meta });
+      if (d.insight && d.meta) {
+        setAiInsight({ insight: d.insight, charts: d.charts ?? {}, meta: d.meta });
+      } else {
+        setAiInsightEmpty(d.message ?? "這個月份還沒有洞察");
+      }
     } catch { setAiInsightErr("網路錯誤"); }
     finally { setAiInsightLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiInsightMonth]);
+
+  const fetchAiAvailableMonths = useCallback(async () => {
+    try {
+      const res = await fetch("/api/ai-insight/months");
+      if (!res.ok) return;
+      const d = await res.json() as { months?: string[]; current?: string };
+      if (d.months && d.months.length > 0) setAiAvailableMonths(d.months);
+    } catch { /* ignore */ }
+  }, []);
 
   const fetchAnomalies = useCallback(async () => {
     setAnomalyLoading(true);
@@ -832,6 +849,10 @@ export default function DashboardPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useFinanceChanged(fetchData);
+
+  // 進頁自動載入 AI 洞察（無需手動按鈕），月份切換也會自動重載
+  useEffect(() => { fetchAiAvailableMonths(); }, [fetchAiAvailableMonths]);
+  useEffect(() => { fetchAiInsight(aiInsightMonth); }, [aiInsightMonth, fetchAiInsight]);
 
   // 動態 title — 顯示當前月份
   useEffect(() => {
@@ -2122,14 +2143,14 @@ export default function DashboardPage() {
               {/* Header — 點擊可折疊（已有洞察時） */}
               <div
                 className={`flex items-center justify-between px-5 py-3.5 ${aiInsight ? "cursor-pointer hover:opacity-80 transition-opacity" : ""}`}
-                style={{ borderBottom: (aiInsight || aiInsightLoading) && aiInsightOpen ? "1px solid var(--border-inner)" : "none" }}
+                style={{ borderBottom: (aiInsight || aiInsightLoading || aiInsightEmpty) && aiInsightOpen ? "1px solid var(--border-inner)" : "none" }}
                 onClick={() => aiInsight && setAiInsightOpen(v => !v)}>
                 <div className="flex items-center gap-2">
                   <span className="text-[16px]">✨</span>
                   <div>
                     <p className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>AI 月度洞察</p>
                     <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
-                      毒舌財務健檢
+                      每月 1 號 10:00 自動生成
                       {aiInsight && !aiInsightOpen && (
                         <span className="ml-2 px-2 py-0.5 rounded-full text-[11px]"
                           style={{ background: "rgba(99,102,241,0.15)", color: "#818CF8" }}>
@@ -2140,53 +2161,40 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                  {/* 月份選擇器 */}
-                  <input
-                    type="month"
+                  {/* 月份選擇器（只列有快照的月份 + 當月） */}
+                  <select
                     value={aiInsightMonth}
-                    max={currentMonth}
-                    onChange={e => {
-                      setAiInsightMonth(e.target.value);
-                      setAiInsight(null);
-                      setAiInsightOpen(true);
-                    }}
+                    onChange={e => setAiInsightMonth(e.target.value)}
                     className="rounded-xl px-2 py-1 text-[13px] outline-none"
-                    style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)", color: "var(--text-sub)", colorScheme: "dark" }}
-                  />
-                  {!aiInsight && !aiInsightLoading && (
+                    style={{ background: "var(--bg-input)", border: "1px solid var(--border-inner)", color: "var(--text-sub)", colorScheme: "dark" }}>
+                    {(aiAvailableMonths.length > 0 ? aiAvailableMonths : [aiInsightMonth]).map(m => (
+                      <option key={m} value={m}>{m}{m === currentMonth ? " （本月）" : ""}</option>
+                    ))}
+                  </select>
+                  {aiInsight && (
                     <button
-                      onClick={() => fetchAiInsight()}
-                      className="px-3 py-1.5 rounded-xl text-[13px] font-semibold text-white transition-opacity hover:opacity-80"
-                      style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)" }}>
-                      產生報告
+                      onClick={() => setAiInsightOpen(v => !v)}
+                      className="px-2.5 py-1.5 rounded-xl text-[13px] transition-opacity hover:opacity-80"
+                      style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "1px solid var(--border-inner)" }}>
+                      {aiInsightOpen ? "▲" : "▼"}
                     </button>
-                  )}
-                  {aiInsight && !aiInsightLoading && (
-                    <>
-                      <button
-                        onClick={() => { setAiInsight(null); setAiInsightOpen(true); fetchAiInsight(); }}
-                        className="px-3 py-1.5 rounded-xl text-[13px] font-semibold transition-opacity hover:opacity-80"
-                        style={{ background: "var(--bg-input)", color: "var(--text-sub)", border: "1px solid var(--border-inner)" }}>
-                        重新分析
-                      </button>
-                      <button
-                        onClick={() => setAiInsightOpen(v => !v)}
-                        className="px-2.5 py-1.5 rounded-xl text-[13px] transition-opacity hover:opacity-80"
-                        style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "1px solid var(--border-inner)" }}>
-                        {aiInsightOpen ? "▲" : "▼"}
-                      </button>
-                    </>
                   )}
                 </div>
               </div>
               {aiInsightLoading && (
                 <div className="px-5 py-6 text-center">
-                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>🔪 Claude 正在磨刀，請稍候…</p>
+                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>✨ 正在整理這個月的財務故事…</p>
                 </div>
               )}
               {aiInsightErr && !aiInsightLoading && (
                 <div className="px-5 py-4">
                   <p className="text-[14px]" style={{ color: "#F87171" }}>{aiInsightErr}</p>
+                </div>
+              )}
+              {aiInsightEmpty && !aiInsightLoading && !aiInsightErr && (
+                <div className="px-5 py-6 text-center space-y-1">
+                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>{aiInsightEmpty}</p>
+                  <p className="text-[12px]" style={{ color: "var(--text-muted)", opacity: 0.7 }}>如需補產生，可請管理員執行 backfill。</p>
                 </div>
               )}
               {aiInsight && !aiInsightLoading && aiInsightOpen && (

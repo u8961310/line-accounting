@@ -9,6 +9,7 @@ import {
 } from "@/lib/notion";
 import { logAudit } from "@/lib/audit";
 import { taipeiTodayAsUTC } from "@/lib/time";
+import { WARM_INSIGHT_SYSTEM_PROMPT, buildWarmInsightUserPrompt } from "@/lib/ai-insight";
 
 export const dynamic = "force-dynamic";
 
@@ -104,14 +105,43 @@ ${goalsSummary.map(g => `  • ${g.emoji} ${g.name}：${g.pct}%`).join("\n") || 
         const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
         const msg = await client.messages.create({
           model:      "claude-haiku-4-5-20251001",
-          max_tokens: 512,
-          system:     "你是一個毒舌但精準的個人財務健檢師。嗆但有料，不給台階，具體到可以當成今天行動清單的建議。繁體中文。",
-          messages:   [{ role: "user", content: `幫我健檢 ${month} 的財務，不要給面子：\n\n${dataContext}\n\n200 字以內，輸出純文字。` }],
+          max_tokens: 600,
+          system:     WARM_INSIGHT_SYSTEM_PROMPT,
+          messages:   [{ role: "user", content: buildWarmInsightUserPrompt(month, dataContext) }],
         });
         insight = msg.content[0].type === "text" ? msg.content[0].text : "";
       } catch (e) {
         console.error("[cron/monthly-report] Claude error:", e);
         insight = dataContext;
+      }
+    }
+
+    // 寫入 DB 快照（Dashboard 會讀這張表）
+    if (insight) {
+      try {
+        await prisma.aiInsight.upsert({
+          where:  { userId_month: { userId: user.id, month } },
+          create: {
+            userId: user.id, month, insight, source: "cron",
+            meta: {
+              totalIncome:     Math.round(totalIncome),
+              totalExpense:    Math.round(totalExpense),
+              savingRate,
+              overBudgetCount: overBudget.length,
+            },
+          },
+          update: {
+            insight, source: "cron",
+            meta: {
+              totalIncome:     Math.round(totalIncome),
+              totalExpense:    Math.round(totalExpense),
+              savingRate,
+              overBudgetCount: overBudget.length,
+            },
+          },
+        });
+      } catch (e) {
+        console.error("[cron/monthly-report] aiInsight upsert failed:", e);
       }
     }
 
