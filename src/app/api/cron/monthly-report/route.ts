@@ -9,6 +9,7 @@ import {
 } from "@/lib/notion";
 import { logAudit } from "@/lib/audit";
 import { taipeiTodayAsUTC } from "@/lib/time";
+import { pushMessage } from "@/lib/line";
 import { WARM_INSIGHT_SYSTEM_PROMPT, buildWarmInsightUserPrompt } from "@/lib/ai-insight";
 
 export const dynamic = "force-dynamic";
@@ -225,6 +226,20 @@ ${goalsSummary.map(g => `  • ${g.emoji} ${g.name}：${g.pct}%`).join("\n") || 
       if (anomalies.length > 0) {
         await appendAnomalyAlert(month, anomalies);
         result.anomalyCount = anomalies.length;
+
+        // LINE 推播異常警示
+        const lineUserId = process.env.LINE_USER_ID;
+        if (lineUserId) {
+          const lines = anomalies
+            .slice(0, 5)
+            .map(a => `${a.category}：NT$${a.current.toLocaleString()}（平均 NT$${a.mean.toLocaleString()}，偏高 ${a.zscore}σ）`);
+          const text = `⚠️ ${month} 異常消費警示\n\n${lines.join("\n")}\n\n快看看是不是哪裡花太多了～`;
+          try {
+            await pushMessage(lineUserId, text);
+          } catch (e) {
+            console.error("[cron/monthly-report] LINE push error:", e);
+          }
+        }
       }
     }
 
