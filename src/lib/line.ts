@@ -45,6 +45,10 @@ export async function replyRawMessage(replyToken: string, messages: Record<strin
 
 export async function pushMessage(userId: string, text: string): Promise<void> {
   const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!accessToken) {
+    console.error("LINE pushMessage: LINE_CHANNEL_ACCESS_TOKEN not set");
+    return;
+  }
   const response = await fetch("https://api.line.me/v2/bot/message/push", {
     method: "POST",
     headers: {

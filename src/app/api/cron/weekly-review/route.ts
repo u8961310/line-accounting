@@ -117,7 +117,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       try {
         const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
         const msg = await anthropic.messages.create({
-          model: "claude-sonnet-4-5",
+          model: "claude-haiku-4-5-20251001",
           max_tokens: 800,
           system:
             "你是蛋糕的個人 AI 助理，請用繁體中文、輕鬆友善的語氣，生成一份週回顧摘要。",
@@ -174,7 +174,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const lineUserId = process.env.LINE_USER_ID;
     if (lineUserId) {
       const lineText = `📊 ${week} 週回顧已生成！\n支出 NT$${Math.round(totalExpense).toLocaleString()} / 收入 NT$${Math.round(totalIncome).toLocaleString()}\n任務完成 ${doneTasks.length} 件\n\n${summary}`;
-      await pushMessage(lineUserId, lineText);
+      try {
+        await pushMessage(lineUserId, lineText);
+      } catch (e) {
+        console.error("[cron/weekly-review] LINE push error:", e);
+      }
     }
 
     // 8. 回傳
