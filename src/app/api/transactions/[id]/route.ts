@@ -31,13 +31,20 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const body = await request.json() as { category?: string; type?: string; mood?: string | null; note?: string; amount?: number };
-    const data: { category?: string; type?: string; mood?: string | null; note?: string; amount?: number } = {};
+    const body = await request.json() as { category?: string; type?: string; mood?: string | null; note?: string; amount?: number; date?: string };
+    const data: { category?: string; type?: string; mood?: string | null; note?: string; amount?: number; date?: Date } = {};
     if (body.category !== undefined) data.category = body.category;
     if (body.type     !== undefined) data.type     = body.type;
     if (body.mood     !== undefined) data.mood     = body.mood;
     if (body.note     !== undefined) data.note     = body.note;
     if (body.amount   !== undefined && body.amount > 0) data.amount = body.amount;
+    if (body.date     !== undefined) {
+      const d = new Date(body.date);
+      if (isNaN(d.getTime())) {
+        return NextResponse.json({ error: "Invalid date" }, { status: 400 });
+      }
+      data.date = d;
+    }
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });
