@@ -6,6 +6,16 @@ import { pushMessage } from "@/lib/line";
 
 export const dynamic = "force-dynamic";
 
+function getISOWeek(date: Date): { year: number; week: number } {
+  // 以週四為基準計算 ISO 週年和週號
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  // 調整到本週四（ISO 8601：週一=1...週日=7，週四=4）
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return { year: d.getUTCFullYear(), week };
+}
+
 /**
  * POST /api/cron/weekly-review
  * 每週一由 Cronicle 觸發，生成上週回顧：
@@ -43,15 +53,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ),
     );
 
-    // ISO week number
-    const yearStart = new Date(Date.UTC(lastMonday.getUTCFullYear(), 0, 1));
-    const weekNum = Math.ceil(
-      ((lastMonday.getTime() - yearStart.getTime()) / 86400000 +
-        yearStart.getUTCDay() +
-        1) /
-        7,
-    );
-    const week = `${lastMonday.getUTCFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+    // ISO week number（正確處理跨年邊界）
+    const { year, week: weekNum } = getISOWeek(lastMonday);
+    const week = `${year}-W${String(weekNum).padStart(2, "0")}`;
 
     // 3. 找 user
     const user = await prisma.user.findFirst({
