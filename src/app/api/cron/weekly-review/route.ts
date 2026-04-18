@@ -170,16 +170,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
     });
 
-    // 7. LINE push（若有 LINE_USER_ID）
-    const lineUserId = process.env.LINE_USER_ID;
-    if (lineUserId) {
-      const lineText = `📊 ${week} 週回顧已生成！\n支出 NT$${Math.round(totalExpense).toLocaleString()} / 收入 NT$${Math.round(totalIncome).toLocaleString()}\n任務完成 ${doneTasks.length} 件\n\n${summary}`;
-      try {
-        await pushMessage(lineUserId, lineText);
-      } catch (e) {
-        console.error("[cron/weekly-review] LINE push error:", e);
-      }
-    }
+    // 7. 不推 LINE（省配額，使用者可以到 Dashboard 看）
 
     // 8. 回傳
     return NextResponse.json({
