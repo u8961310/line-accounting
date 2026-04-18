@@ -43,6 +43,22 @@ export async function replyRawMessage(replyToken: string, messages: Record<strin
   }
 }
 
+export async function pushMessage(userId: string, text: string): Promise<void> {
+  const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const response = await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ to: userId, messages: [{ type: "text", text }] }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("LINE pushMessage error:", response.status, errorText);
+  }
+}
+
 export async function getUserProfile(userId: string): Promise<LineProfile | null> {
   const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 
