@@ -427,6 +427,16 @@ function fmt(n: number) {
   return Math.abs(n).toLocaleString("zh-TW", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
+function arcPath(cx: number, cy: number, r: number, startAngle: number, endAngle: number): string {
+  const toRad = (deg: number) => (deg - 90) * Math.PI / 180;
+  const x1 = cx + r * Math.cos(toRad(startAngle));
+  const y1 = cy + r * Math.sin(toRad(startAngle));
+  const x2 = cx + r * Math.cos(toRad(endAngle));
+  const y2 = cy + r * Math.sin(toRad(endAngle));
+  const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+}
+
 function SectionLabel({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3 py-1">
@@ -2494,6 +2504,69 @@ export default function DashboardPage() {
                 </p>
               )}
             </div>
+
+            {/* Asset allocation pie chart */}
+            {balances.length > 0 && (() => {
+              const PIE_COLORS = ["#4299E1","#10B981","#8B5CF6","#F59E0B","#EF4444","#06B6D4","#F97316","#22C55E"];
+              const positive = balances.filter(b => b.balance > 0);
+              const total = positive.reduce((s, b) => s + b.balance, 0);
+              if (positive.length === 0 || total === 0) return null;
+              const sorted = [...positive].sort((a, b) => b.balance - a.balance);
+              let currentAngle = 0;
+              const slices = sorted.map((b, idx) => {
+                const pct = b.balance / total;
+                const startAngle = currentAngle;
+                const endAngle = currentAngle + pct * 360;
+                currentAngle = endAngle;
+                const color = b.source === "cash" ? "#22C55E" : PIE_COLORS[idx % PIE_COLORS.length];
+                const displayName = b.alias || (SOURCE_LABELS[b.source] ?? b.source);
+                return { ...b, pct, startAngle, endAngle, color, displayName };
+              });
+              return (
+                <div className="rounded-2xl p-6 mb-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>資產配置</p>
+                    <p className="text-[14px] tabular-nums" style={{ color: "var(--text-sub)" }}>
+                      合計 NT$ {fmt(total)}
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-center gap-6">
+                    <svg width="220" height="220" viewBox="0 0 220 220" className="flex-shrink-0">
+                      {slices.length === 1 ? (
+                        <circle cx="110" cy="110" r="100" fill={slices[0].color} />
+                      ) : (
+                        slices.map(s => (
+                          <path key={s.source}
+                            d={arcPath(110, 110, 100, s.startAngle, s.endAngle)}
+                            fill={s.color} stroke="var(--bg-card)" strokeWidth="2" />
+                        ))
+                      )}
+                      <circle cx="110" cy="110" r="50" fill="var(--bg-card)" />
+                      <text x="110" y="105" textAnchor="middle" fontSize="10" style={{ fill: "var(--text-muted)" }}>總資產</text>
+                      <text x="110" y="122" textAnchor="middle" fontSize="13" fontWeight="bold" style={{ fill: "var(--text-primary)" }}>
+                        NT$ {fmt(total)}
+                      </text>
+                    </svg>
+                    <div className="flex-1 w-full grid grid-cols-1 gap-2">
+                      {slices.map(s => (
+                        <div key={s.source} className="flex items-center gap-3 text-[13px]">
+                          <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: s.color }} />
+                          <span className="flex-1 truncate" style={{ color: "var(--text-primary)" }}>
+                            {s.displayName}
+                          </span>
+                          <span className="tabular-nums" style={{ color: "var(--text-muted)" }}>
+                            {(s.pct * 100).toFixed(1)}%
+                          </span>
+                          <span className="tabular-nums font-semibold w-24 text-right" style={{ color: "var(--text-primary)" }}>
+                            NT$ {fmt(s.balance)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Bank balances */}
             {balances.length === 0 && (
