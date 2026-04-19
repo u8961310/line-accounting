@@ -30,12 +30,19 @@ export async function GET(request: NextRequest) {
     const amountMin      = searchParams.get("amountMin");  // number string
     const amountMax      = searchParams.get("amountMax");  // number string
 
+    const parseDate = (s: string): Date | null => {
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? null : d;
+    };
+    const dateGte = dateFrom ? parseDate(dateFrom) : null;
+    const dateLte = dateTo   ? parseDate(dateTo + "T23:59:59") : null;
+
     const dateFilter = monthFilter ? (() => {
       const [y, m] = monthFilter.split("-").map(Number);
       return { gte: new Date(y, m - 1, 1), lt: new Date(y, m, 1) };
-    })() : (dateFrom || dateTo) ? {
-      ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-      ...(dateTo   ? { lte: new Date(dateTo + "T23:59:59") } : {}),
+    })() : (dateGte || dateLte) ? {
+      ...(dateGte ? { gte: dateGte } : {}),
+      ...(dateLte ? { lte: dateLte } : {}),
     } : undefined;
 
     const where = {

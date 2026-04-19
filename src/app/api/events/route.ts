@@ -57,6 +57,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       where.status = "confirmed";
     } else if (scope === "upcoming") {
       where.startAt = { gte: now };
+      where.status = "confirmed";
     } else if (scope === "past") {
       where.startAt = { lt: now };
     }

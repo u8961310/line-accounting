@@ -51,18 +51,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ date, content: null, notionUrl: null });
     }
 
-    const query = await notion.dataSources.query({
-      data_source_id: db.data_sources?.[0]?.id ?? dbId,
+    const query = await notion.databases.query({
+      database_id: dbId,
       filter,
       page_size: 1,
-    }).catch(async () => {
-      // 舊版 Notion API fallback
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return await (notion as any).databases.query({
-        database_id: dbId,
-        filter,
-        page_size: 1,
-      });
     });
 
     const page = query.results[0];
