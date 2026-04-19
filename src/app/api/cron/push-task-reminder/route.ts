@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendExpoPush } from "@/lib/expo-push";
+import { broadcastWebPush } from "@/lib/web-push";
 import { deleteCronicleEvent } from "@/lib/cronicle";
 
 export const dynamic = "force-dynamic";
@@ -47,27 +48,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const subs = await prisma.pushSubscription.findMany({ where: { active: true } });
 
-    if (subs.length === 0) {
-      await prisma.task.update({
-        where: { id: task.id },
-        data: { reminded: true },
-      }).catch(console.error);
-      if (cronId) await deleteCronicleEvent(cronId).catch(() => null);
-      return NextResponse.json({ ok: true, sent: 0, note: "無可用訂閱" });
-    }
+    const title = `⏰ ${task.title}`;
+    const bodyText = task.dueTime
+      ? `${task.dueTime} 提醒：${task.title}`
+      : `任務時間到：${task.title}`;
 
-    const tickets = await sendExpoPush(
-      subs.map((s) => ({
-        to: s.token,
-        title: `⏰ ${task.title}`,
-        body: task.dueTime ? `${task.dueTime} 提醒：${task.title}` : `任務時間到：${task.title}`,
+    // 平行送 Expo (APP) + Web Push (瀏覽器)
+    const [tickets, webResult] = await Promise.all([
+      subs.length === 0
+        ? Promise.resolve([])
+        : sendExpoPush(
+            subs.map((s) => ({
+              to: s.token,
+              title,
+              body: bodyText,
+              data: { kind: "task", taskId: task.id },
+              categoryId: "budget_alert",
+              channelId: "default",
+              sound: "default",
+              priority: "high",
+            }))
+          ),
+      broadcastWebPush({
+        title,
+        body: bodyText,
         data: { kind: "task", taskId: task.id },
-        categoryId: "budget_alert",
-        channelId: "default",
-        sound: "default",
-        priority: "high",
-      }))
-    );
+        url: "/tasks",
+      }).catch((e) => {
+        console.error("[push-task-reminder] web push failed:", e);
+        return { sent: 0, failed: 0, expired: 0 };
+      }),
+    ]);
 
     const errors = tickets.filter((t) => t.status === "error");
 
@@ -81,8 +92,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({
       ok: true,
-      sent: tickets.length - errors.length,
-      failed: errors.length,
+      expoSent: tickets.length - errors.length,
+      expoFailed: errors.length,
+      web: webResult,
     });
   } catch (e) {
     console.error("[push-task-reminder]", e);
