@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getIronSession } from "iron-session";
 import { SessionData, SESSION_OPTIONS } from "@/lib/session";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/webhook", "/api/health", "/api/cron", "/api/push/send"];
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/webhook", "/api/health", "/api/cron", "/api/push/send", "/api/cron/push-task-reminder"];
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;

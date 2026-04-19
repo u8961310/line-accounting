@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Task" ADD COLUMN "cronId" TEXT;
+ALTER TABLE "Task" ADD COLUMN "reminded" BOOLEAN NOT NULL DEFAULT false;

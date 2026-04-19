@@ -66,6 +66,16 @@ export async function PATCH(
       data,
     });
 
+    // 狀態改為完成 → 清除 Cronicle 排程（避免時間到還推播）
+    if (body.status === "done" && task.cronId) {
+      const { deleteCronicleEvent } = await import("@/lib/cronicle");
+      await deleteCronicleEvent(task.cronId).catch(console.error);
+      await prisma.task.update({
+        where: { id: task.id },
+        data: { cronId: null },
+      }).catch(console.error);
+    }
+
     return NextResponse.json({
       id:       task.id,
       title:    task.title,
@@ -89,6 +99,15 @@ export async function DELETE(
   { params }: { params: { id: string } },
 ): Promise<NextResponse> {
   try {
+    // 先查 cronId 再刪（刪除後就查不到）
+    const task = await prisma.task.findUnique({
+      where: { id: params.id },
+      select: { cronId: true },
+    });
+    if (task?.cronId) {
+      const { deleteCronicleEvent } = await import("@/lib/cronicle");
+      await deleteCronicleEvent(task.cronId).catch(console.error);
+    }
     await prisma.task.delete({ where: { id: params.id } });
     return NextResponse.json({ success: true });
   } catch (e) {

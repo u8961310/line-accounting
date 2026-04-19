@@ -297,6 +297,8 @@ model Task {
   status    String    @default("open")  // open | done
   category  String    @default("其他")  // 工作 | 生活 | 財務 | 其他
   note      String    @default("")
+  cronId    String?                     // Cronicle 排程 ID（APP 建立且有 dueTime 時）
+  reminded  Boolean   @default(false)   // 是否已推播提醒
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 

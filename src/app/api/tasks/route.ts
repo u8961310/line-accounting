@@ -10,7 +10,7 @@ async function getUser() {
 // ── GET /api/tasks ────────────────────────────────────────────────────────────
 // Query params:
 //   ?status=open|done|all   (default: all)
-//   ?date=today|upcoming    (today = due today, upcoming = due within 7 days)
+//   ?date=today|upcoming|overdue    (today = due today, upcoming = due within 7 days, overdue = past due)
 //   ?category=工作|生活|財務|其他
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -38,6 +38,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       where.dueDate = { gte: today, lte: todayEnd };
     } else if (date === "upcoming") {
       where.dueDate = { gte: today, lte: in7Days };
+    } else if (date === "overdue") {
+      where.dueDate = { lt: today };
+      if (!status || status === "all") where.status = "open"; // 逾期預設只看未完成
     }
 
     const tasks = await prisma.task.findMany({
@@ -97,6 +100,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         note:     body.note ?? "",
       },
     });
+
+    // 有 dueDate + dueTime 時建立 Cronicle 精準排程（失敗不影響主流程）
+    if (body.dueDate && body.dueTime) {
+      const { createTaskReminder } = await import("@/lib/cronicle");
+      const cronId = await createTaskReminder({
+        id: task.id,
+        title: task.title,
+        dueDate: body.dueDate,
+        dueTime: body.dueTime,
+      });
+      if (cronId) {
+        await prisma.task.update({
+          where: { id: task.id },
+          data: { cronId },
+        }).catch((e) => console.error("[tasks] save cronId failed:", e));
+      }
+    }
 
     return NextResponse.json({
       id:       task.id,
