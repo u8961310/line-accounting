@@ -416,3 +416,16 @@ model AuditLog {
   @@index([createdAt])
   @@index([action])
 }
+
+model PushSubscription {
+  id         String   @id @default(cuid())
+  token      String   @unique              // Expo Push Token (ExponentPushToken[...])
+  platform   String                        // ios | android
+  deviceInfo Json?                          // { model, osVersion, appVersion }
+  active     Boolean  @default(true)        // 失效後改 false，不刪
+  lastUsedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([active])
+}
