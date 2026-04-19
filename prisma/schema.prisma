@@ -431,3 +431,17 @@ model PushSubscription {
 
   @@index([active])
 }
+
+model WebPushSubscription {
+  id         String   @id @default(cuid())
+  endpoint   String   @unique              // browser push endpoint URL
+  p256dh     String                         // keys.p256dh
+  auth       String                         // keys.auth
+  userAgent  String?                        // 方便識別是哪台電腦
+  active     Boolean  @default(true)
+  lastUsedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([active])
+}

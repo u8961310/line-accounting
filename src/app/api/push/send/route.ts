@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendExpoPush, ExpoPushMessage } from "@/lib/expo-push";
+import { broadcastWebPush } from "@/lib/web-push";
 
 export const dynamic = "force-dynamic";
 
@@ -60,8 +61,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       })
     : await prisma.pushSubscription.findMany({ where: { active: true } });
 
-  if (subs.length === 0) {
-    return NextResponse.json({ ok: true, sent: 0, note: "無可用訂閱" });
+  // 未指定 tokens 時視為廣播，同步推給所有 Web Push 訂閱（公司/家裡 Chrome）
+  const webResult = specifiedTokens
+    ? { sent: 0, failed: 0, expired: 0 }
+    : await broadcastWebPush({
+        title: title ?? "",
+        body: messageBody,
+        data,
+        url: (data?.url as string | undefined) ?? undefined,
+      }).catch((e) => {
+        console.error("[push/send] web push broadcast failed:", e);
+        return { sent: 0, failed: 0, expired: 0 };
+      });
+
+  if (subs.length === 0 && webResult.sent === 0) {
+    return NextResponse.json({ ok: true, sent: 0, web: webResult, note: "無可用訂閱" });
   }
 
   const messages: ExpoPushMessage[] = subs.map((s) => ({
@@ -106,5 +120,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     sent: tickets.length - errors.length,
     failed: errors.length,
     errors: errors.map((e) => e.message),
+    web: webResult,
   });
 }
