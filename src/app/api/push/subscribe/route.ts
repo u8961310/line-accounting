@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { isValidExpoPushToken } from "@/lib/expo-push";
 
@@ -35,12 +36,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     create: {
       token,
       platform,
-      deviceInfo: deviceInfo ?? undefined,
+      deviceInfo: (deviceInfo as Prisma.InputJsonValue) ?? undefined,
       active: true,
     },
     update: {
       platform,
-      deviceInfo: deviceInfo ?? undefined,
+      deviceInfo: (deviceInfo as Prisma.InputJsonValue) ?? undefined,
       active: true,
       lastUsedAt: new Date(),
     },
